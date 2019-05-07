@@ -221,11 +221,9 @@ class App(QMainWindow):
             f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if f:
             self.conf.filename = f
-            q = self.conf.q
-            q[self.cmstr] = self.q
-            self.conf.q = q
+            self.conf[self.cmstr].q = self.q
+            self.conf[self.cmstr].theta = self.theta
             self.conf.maxStep = self.maxStep
-            self.conf.theta = self.theta
 
     def confopen(self, f):
         if not os.path.isfile(f):
@@ -233,21 +231,19 @@ class App(QMainWindow):
             f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if f:
             self.conf.filename = f
-            if self.cmstr in self.conf.q:
-                q = self.conf.q[self.cmstr]
-                if not q is None:
-                    self.q = q
+            if self.cmstr in self.conf:
+                if 'q' in self.conf[self.cmstr]:
+                    self.q = self.conf[self.cmstr].q
                     for i in range(9):
-                        self.edt[i].setText('{}'.format(q[i]))
+                        self.edt[i].setText('{}'.format(self.q[i]))
 
-            maxStep = self.conf.maxStep
-            if not maxStep is None:
-                self.maxStep = maxStep
-                self.maxStepfld.setText('{}'.format(maxStep))
-            theta = self.conf.theta
-            if not theta is None:
-                self.theta = theta
-                self.thetafld.setText('{}'.format(theta))
+                if 'theta' in self.conf[self.cmstr]:
+                    self.theta = self.conf[self.cmstr].theta
+                    self.thetafld.setText('{}'.format(self.theta))
+
+            if 'maxStep' in self.conf:
+                self.maxStep = self.conf.maxStep
+                self.maxStepfld.setText('{}'.format(self.maxStep))
 
     def changeq(self, i):
         def fun(val):

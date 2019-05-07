@@ -24,7 +24,7 @@ class zen:
 
     @property
     def MagStr(self):
-        return '{:.0f}x{:.1f}'.format(self.ObjectiveMag, self.OptovarMag)
+        return '{:.0f}x{:.0f}'.format(self.ObjectiveMag, 10*self.OptovarMag)
 
     @property
     def ObjectiveMag(self):

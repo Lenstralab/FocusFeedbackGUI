@@ -1,76 +1,110 @@
 import yaml
 import os
 
-def prop(*loc):
-    #Define a class property as an entry in a dictionary (classinstance.conf) recursively (dict with dicts in it)
-    def dictnavget(d, loc):
-        try:
-            for l in loc:
-                if l in d:
-                    d = d[l]
-                else:
-                    return None
-            return d
-        except:
-            return None
+class strct:
+    def __init__(self, parent, key):
+        self.__dict__['parent'] = parent
+        self.__dict__['key'] = key
 
-    def dictnavset(d, loc, var):
-        def fun(d, loc, var):
-            for l in loc[:-1]:
-                if l in d:
-                    d = d[l]
-                else:
-                    d[l] = dict()
-                    d = d[l]
-            d[loc[-1]] = var
+    def __contains__(self, item):
+        c = self.parent.getconf()
+        if not self.key in c:
+            return False
+        c = c[self.key]
+        if not item in c:
+            return False
+        return True
 
-        fun(d, loc, var)
-        return d
+    def __getitem__(self, item):
+        return self.__getattr__(item)
 
-    def getter(loc):
-        def gett(self):
-            return dictnavget(self.conf, loc)
-        return gett
+    def __setitem__(self, item, value):
+        return self.__setattr__(item, value)
 
-    def setter(loc):
-        def sett(self, var):
-            self.conf = dictnavset(self.conf, loc, var)
-        return sett
+    def __getattr__(self, item):
+        c = self.parent.getconf()
+        if not self.key in c:
+            return strct(self, item)
+        c = c[self.key]
+        if not item in c:
+            return strct(self, item)
+        i = c[item]
+        if isinstance(i, dict):
+            return strct(self, item)
+        return i
 
-    return property(getter(loc), setter(loc))
+    def __setattr__(self, item, value):
+        c = self.parent.getconf()
+        if not self.key in c:
+            c[self.key] = dict()
+        if not item in c[self.key]:
+            c[self.key][item] = dict()
+        c[self.key][item] = value
+        self.parent.setconf(c)
+
+    def getconf(self):
+        c = self.parent.getconf()
+        if not self.key in c:
+            return dict()
+        return self.parent.getconf()[self.key]
+
+    def setconf(self, conf):
+        c = self.parent.getconf()
+        c[self.key] = conf
+        self.parent.setconf(c)
 
 class conf:
     def __init__(self, filename='D:\CylLensGUI\src\main\python\conf.yml'):
-        self._filename = filename
+        self.__dict__['_filename'] = filename
 
-    q = prop('q')
-    maxStep = prop('maxStep')
-    theta = prop('theta')
+    def __contains__(self, item):
+        c = self.getconf()
+        if not item in c:
+            return False
+        return True
 
-    @property
-    def conf(self):
+    def __getitem__(self, item):
+        return self.__getattr__(item)
+
+    def __setitem__(self, key, value):
+        return self.__setattr__(key, value)
+
+    def __getattr__(self, item):
+        if item == 'filename':
+            return self._filename
+        c = self.getconf()
+        if not item in c:
+            return strct(self, item)
+        i = c[item]
+        if isinstance(i, dict):
+            return strct(self, item)
+        return i
+
+    def __setattr__(self, item, value):
+        if item == 'filename':
+            self.setfilename(value)
+        else:
+            c = self.getconf()
+            c[item] = value
+            self.setconf(c)
+
+    def getconf(self):
         try:
-            y = open(self.filename, 'r')
+            y = open(self._filename, 'r')
             c = yaml.full_load(y)
             y.close()
             if c is None:
-                c = dict()
+                return dict()
+            return c
         except:
-            c = dict()
-        return c
+            return dict()
 
-    @conf.setter
-    def conf(self, conf):
-        y = open(self.filename, 'w')
+    def setconf(self, conf):
+        y = open(self._filename, 'w')
         yaml.dump(conf, y, default_flow_style=None)
         y.close()
 
-    @property
-    def filename(self):
-        return self._filename
-
-    @filename.setter
-    def filename(self, filename):
+    def setfilename(self, filename):
         if not filename[-4:] == '.yml':
             filename += '.yml'
         if not os.path.isfile(filename):
@@ -78,4 +112,4 @@ class conf:
             y = open(filename, 'w+')
             yaml.dump(c, y, default_flow_style=None)
             y.close()
-        self._filename = filename
+        self.__dict__['_filename'] = filename
