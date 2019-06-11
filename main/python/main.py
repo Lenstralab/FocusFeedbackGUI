@@ -181,23 +181,36 @@ class App(QMainWindow):
             self.unt.append(QLabel(l))
             self.grid.addWidget(self.unt[-1], i, 3)
 
-        self.grid.addWidget(QLabel('Cylindrical lens'), 0, 4)
-        self.cyllensdrp = QComboBox()
-        self.cyllensdrp.addItems(['A','B'])
-        self.cyllensdrp.currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
-        self.grid.addWidget(self.cyllensdrp, 0, 5)
+        self.channel = 1
+        self.grid.addWidget(QLabel('Feedback channel'), 0, 4)
+        self.rdbch = RadioButtons(('0', '1'), init_state=self.channel, callback=self.changechannel)
+        self.grid.addWidget(self.rdbch, 0, 5)
 
-        self.grid.addWidget(QLabel('theta:'), 1, 4)
+        self.cyllensdrp = []
+        self.grid.addWidget(QLabel('Cylindrical lens 0'), 1, 4)
+        self.cyllensdrp.append(QComboBox())
+        self.cyllensdrp[-1].addItems(['None','A','B'])
+        self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
+        self.grid.addWidget(self.cyllensdrp[-1], 1, 5)
+
+        self.grid.addWidget(QLabel('Cylindrical lens 1'), 2, 4)
+        self.cyllensdrp.append(QComboBox())
+        self.cyllensdrp[-1].addItems(['None','A', 'B'])
+        self.cyllensdrp[-1].setCurrentIndex(1)
+        self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
+        self.grid.addWidget(self.cyllensdrp[-1], 2, 5)
+
+        self.grid.addWidget(QLabel('theta:'), 3, 4)
         self.thetafld = QLineEdit()
         self.thetafld.textChanged.connect(self.changetheta)
-        self.grid.addWidget(self.thetafld, 1, 5)
-        self.grid.addWidget(QLabel('rad'), 1, 6)
+        self.grid.addWidget(self.thetafld, 3, 5)
+        self.grid.addWidget(QLabel('rad'), 3, 6)
 
-        self.grid.addWidget(QLabel('Max stepsize:'), 2, 4)
+        self.grid.addWidget(QLabel('Max stepsize:'), 4, 4)
         self.maxStepfld = QLineEdit()
         self.maxStepfld.textChanged.connect(self.changemaxStep)
-        self.grid.addWidget(self.maxStepfld, 2, 5)
-        self.grid.addWidget(QLabel('um'), 2, 6)
+        self.grid.addWidget(self.maxStepfld, 4, 5)
+        self.grid.addWidget(QLabel('um'), 4, 6)
 
         self.tab2.setLayout(self.grid)
 
@@ -259,9 +272,13 @@ class App(QMainWindow):
     def changetheta(self, val):
         self.theta = float(val)
 
+    def changechannel(self, val):
+        self.channel = int(val)
+        self.confopen(self.conf.filename)
+
     @property
     def cmstr(self):
-        return self.cyllensdrp.currentText()+self.zen.MagStr
+        return self.cyllensdrp[self.channel].currentText()+self.zen.MagStr
 
     @firstargonly
     def closeEvent(self):
@@ -277,7 +294,6 @@ class App(QMainWindow):
         np.seterr(all='ignore');
 
         Size = 32 #Size of the ROI in which the psf is fitted
-        Theta = -0.12681961999191083
         SleepTime = 0.02
         gain = -5e-3
 
@@ -295,6 +311,8 @@ class App(QMainWindow):
             #Experiment has started:
             G = Z.PiezoPos
             pfilename = Z.FileName[:-3]+'pzl'
+            metafile = config.conf(pfilename)
+            #metafile.
             if not os.path.isfile(pfilename):
                 file = open(pfilename,'w+')
 
@@ -313,7 +331,7 @@ class App(QMainWindow):
 
                 TimeMem = 0
                 while (Z.ExperimentRunning) & (not self.stop):
-                    Frame, Time = Z.GetFrameCenter(Size)
+                    Frame, Time = Z.GetFrameCenter(Size, self.channel)
                     if Time < TimeMem:
                         TTime = TimeMem + 1
                     else:
@@ -322,7 +340,7 @@ class App(QMainWindow):
                     # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
                     # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
-                    a = functions.fg(Frame, Theta, f)
+                    a = functions.fg(Frame, self.theta, f)
 
                     #Update the piezo position:
                     if mode == 'pid':
@@ -346,7 +364,7 @@ class App(QMainWindow):
                     R = float(a[2])
                     E = float(a[5])
 
-                    Z.DrawEllipse(X, Y, R, E, Theta)
+                    Z.DrawEllipse(X, Y, R, E, self.theta)
 
                     if mode == 'pid':
                         if Pz > (G + 5):
@@ -378,15 +396,15 @@ class App(QMainWindow):
         self.stop = True
 
 class RadioButtons(QWidget):
-    def __init__(self, txt, callback=None):
+    def __init__(self, txt, init_state=0, callback=None):
         QWidget.__init__(self)
         layout = QGridLayout()
         self.setLayout(layout)
         self.callback = callback
-        self.state = txt[0]
+        self.state = txt[init_state]
         for i, t in enumerate(txt):
             radiobutton = QRadioButton(t)
-            if i == 0:
+            if i == init_state:
                 radiobutton.setChecked(True)
             radiobutton.text = t
             radiobutton.toggled.connect(self.onClicked)

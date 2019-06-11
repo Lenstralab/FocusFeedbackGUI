@@ -9,6 +9,7 @@ class zen:
         self.ConnectZEN()
         self.ProgressCoord = self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates
         self.LastProgressCoord = self.ProgressCoord()
+        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
         
     def reconnect(fun):
         def f(self,*args):
@@ -61,6 +62,7 @@ class zen:
         self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
         
     def DisconnectZEN(self):
+        self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
         self.ZEN = None
         self.VBA = None
         
@@ -87,7 +89,7 @@ class zen:
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
         return ScanDoc.GetDimensionX(), ScanDoc.GetDimensionY()
         
-    def GetFrameCenter(self, Size, Channel=1):
+    def GetFrameCenter(self, Channel=1, Size=32):
         Size = 2*int((Size+1)/2) #Ensure evenness
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
         xMax = ScanDoc.GetDimensionX()
@@ -160,7 +162,9 @@ class zen:
             Z = 250
         elif Z < -250:
             Z = -250
+        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(1)
         self.VBA.Lsm5.Hardware().CpHrz().Position = Z
+        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
         return
 
     def MovePiezoRel(self, Z):
@@ -192,3 +196,7 @@ class zen:
             Y += y
         self.StagePos = (X, Y)
         return
+
+    @property
+    def duolinkcalpat(self):
+        pass
