@@ -113,7 +113,7 @@ class zen:
         if self.EventHandler is None:
             self.VBA = win32com.client.Dispatch('Lsm5Vba.Application')
         else:
-            self.VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler(ZEN=self))
+            self.VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
         #self.AimImage = win32com.client.Dispatch('AimImage.Image')
         #self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
         self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)

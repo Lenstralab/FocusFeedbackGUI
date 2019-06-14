@@ -57,6 +57,8 @@ class App(QMainWindow):
 
         self.ellipse = None
         self.rectangle = None
+        self.MagStr = self.zen.MagStr
+        self.DLFilter = self.zen.DLFilter
 
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -71,45 +73,10 @@ class App(QMainWindow):
         self.menus()
         self.layout.addWidget(self.tabs)
 
-        self.mapfun()
-        self.magstrchk()
         events(self)
 
         self.setCentralWidget(self.central_widget)
         self.show()
-
-    @thread
-    def mapfun(self):
-        Z = zen()
-        LP = Z.StagePos
-        self.map.numel_data(LP[0], LP[1])
-        while not self.stop:
-            if not Z.StagePos == LP:
-                LP = Z.StagePos
-                self.map.numel_data(LP[0], LP[1])
-            time.sleep(0.1)
-
-    @thread
-    def magstrchk(self):
-        """
-        handles events from ZEN
-        """
-        Z = zen()
-        LMagStr = Z.MagStr
-        DLF = Z.DLFilter
-        while not self.stop:
-            #change of magnification
-            if not LMagStr == Z.MagStr:
-                self.confopen(self.conf.filename)
-                LMagStr = Z.MagStr
-
-            #change of duolink filter
-            if not DLF == Z.DLFilter:
-                self.dlf.setText(self.dlfs.currentText().split(' & ')[Z.DLFilter])
-                DLF = Z.DLFilter
-
-            time.sleep(0.5)
-        Z.DisconnectZEN()
 
     def menus(self):
         mainMenu = self.menuBar()
@@ -314,8 +281,12 @@ class App(QMainWindow):
         self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
 
     def center(self):
-        self.docenter = True
-        self.centerbtn.setText('Waiting for click')
+        if self.docenter == False:
+            self.docenter = True
+            self.centerbtn.setText('Waiting for click')
+        else:
+            self.docenter = False
+            self.centerbtn.setText('Center')
 
     @property
     def cmstr(self):
@@ -341,8 +312,8 @@ class App(QMainWindow):
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
         Z = zen()  #cannot move com-objects from one thread to another :(
-        FS = Z.FrameSize
         Z.RemoveDrawings()
+        FS = Z.FrameSize
         self.rectangle = Z.DrawRectangle(FS[0]/2, FS[1]/2, Size, Size, index=self.rectangle)
         while True:
             mode = self.rdb.state.lower()
@@ -350,6 +321,8 @@ class App(QMainWindow):
 
             #First wait for the experiment to start:
             while (not Z.ExperimentRunning) & (not self.stop):
+                FS = Z.FrameSize
+                self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
                 time.sleep(SleepTime)
 
             #Experiment has started:

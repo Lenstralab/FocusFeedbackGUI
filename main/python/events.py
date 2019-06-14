@@ -4,12 +4,18 @@ from time import sleep
 from threading import Thread
 from zen import zen, cst
 
-LMBDown = 203
-
 def thread(fun):
     """ decorator to run function in a separate thread to keep the gui responsive
     """
     return lambda *args: Thread(target=fun, args=args).start()
+
+def errwrap(fun):
+    def e(*args, **kwargs):
+        try:
+            fun(*args, **kwargs)
+        except:
+            pass
+    return e
 
 class EventHandlerMetaClass(type):
     """
@@ -35,32 +41,50 @@ class EventHandlerMetaClass(type):
                 setattr(cls, name, partial(EventHandlerMetaClass.null_event_handler, name))
         return cls
 
-def EventHandler(CLG, ZEN):
+def EventHandler(CLG):
     class EventHandlerCls(metaclass=EventHandlerMetaClass):
-        clg = CLG
-        zen = ZEN
+        clg = CLG #reference to app class
+
+        @thread
+        @errwrap
         def OnThrowEvent(self, *args):
+            z = zen()
             if args[0] == cst('LeftButtonDown') and self.clg.docenter:
                 # print(('OnThrowEvent:', args, X))
-                self.clg.docenter = False
-                self.clg.centerbtn.setText('Center')
-                X = self.zen.MousePosition
-                FS = self.zen.FrameSize
-                pxsize = self.zen.pxsize
+                #self.clg.docenter = False
+                #self.clg.centerbtn.setText('Center')
+                X = z.MousePosition
+                FS = z.FrameSize
+                pxsize = z.pxsize
                 d = [(FS[i]/2 - X[i]) * pxsize/1000 for i in range(2)]
                 d[1] *= -1
                 #print('Moving ({}; {})  um.'.format(*d))
-                self.zen.MoveStageRel(*d)
+                z.MoveStageRel(*d)
+            z.DisconnectZEN()
 
-        #OnThrowPropertyEvent
+        @thread
+        @errwrap
+        def OnThrowPropertyEvent(self, *args):
+            z = zen()
+            print(('OnThrowProperyEvent:', args))
+            if args[1] == 'TransmissionSpot' and self.clg.MagStr != z.MagStr:
+                self.clg.MagStr = z.MagStr
+                self.clg.confopen(self.clg.conf.filename)
+            elif args[1] == '2C_FilterSlider' and self.clg.DLFilter != z.DLFilter:
+                self.clg.DLFilter = z.DLFilter
+                self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[z.DLFilter])
+            elif args[1] == 'Stage':
+                LP = z.StagePos
+                self.clg.map.numel_data(LP[0], LP[1])
+            z.DisconnectZEN()
 
     return EventHandlerCls
 
 @thread
 def events(clg):
-    z = zen(partial(EventHandler, CLG=clg))
+    z = zen(EventHandler(clg))
     z.EnableEvent('LeftButtonDown')
 
     while not clg.stop:
-        sleep(.05)
+        sleep(.01)
         pythoncom.PumpWaitingMessages()
