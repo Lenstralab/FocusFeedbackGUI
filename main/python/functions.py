@@ -2,77 +2,99 @@ import numpy as np
 import scipy.optimize
 import scipy.special
 import scipy.ndimage
+from numba import jit
 
-def gaussian(p,X,Y):
+@jit(nopython=True, nogil=True)
+def meshgrid(x, y):
+    s = (len(y), len(x))
+    xv = np.zeros(s)
+    yv = np.zeros(s)
+    for i in range(s[0]):
+        for j in range(s[1]):
+            xv[i,j] = x[j]
+            yv[i,j] = y[i]
+    return xv, yv
+
+@jit(nopython=True, nogil=True)
+def erf(x):
+    # save the sign of x
+    sign = 1 if x >= 0 else -1
+    x = abs(x)
+
+    # constants
+    a1 =  0.254829592
+    a2 = -0.284496736
+    a3 =  1.421413741
+    a4 = -1.453152027
+    a5 =  1.061405429
+    p  =  0.3275911
+
+    # A&S formula 7.1.26
+    t = 1.0/(1.0 + p*x)
+    y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*np.exp(-x*x)
+    return sign*y # erf(-x) = -erf(x)
+
+@jit(nopython=True, nogil=True)
+def erf2(x):
+    s = x.shape
+    y = np.zeros(s)
+    for i in range(s[0]):
+        for j in range(s[1]):
+            y[i,j] = erf(x[i,j])
+    return y
+
+@jit(nopython=True, nogil=True)
+def gaussian7grid(p, xv, yv):
     """ p: [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
-        default ellipticity & angle: 1 resp. 0
-        X,Y: size of image
+        xv, yv = meshgrid(np.arange(Y),np.arange(X))
+            calculation of meshgrid is done outside, so it doesn't
+            have to be done each time this function is run
+        reimplemented for numba, small deviations from true result
+            possible because of reimplementation of erf
     """
-    efac = np.sqrt(np.log(2))/p[2]
-    if np.size(p)<6:
-        dx = efac
-        dy = efac
+    if p[2] == 0:
+        efac = 1e-9
     else:
-        dx = efac/p[5]
-        dy = efac*p[5]
-    xv, yv = np.meshgrid(np.arange(Y)-p[0],np.arange(X)-p[1])
-    if np.size(p)<7:
-        x = 2*dx*xv
-        y = 2*dy*yv
-    else:
-        cos, sin = np.cos(p[6]), np.sin(p[6])
-        x = 2*dx*(cos*xv-yv*sin)
-        y = 2*dy*(cos*yv+xv*sin)
-    erf = scipy.special.erf
-    return p[3]/4*(erf(x+dx)-erf(x-dx))*(erf(y+dy)-erf(y-dy))+p[4]
+        efac = np.sqrt(np.log(2))/p[2]
+    dx = efac/p[5]
+    dy = efac*p[5]
+    cos, sin = np.cos(p[6]), np.sin(p[6])
+    x = 2*dx*(cos*(xv-p[0])-(yv-p[1])*sin)
+    y = 2*dy*(cos*(yv-p[1])+(xv-p[0])*sin)
+    return p[3]/4*(erf2(x+dx)-erf2(x-dx))*(erf2(y+dy)-erf2(y-dy))+p[4]
 
-def fitgauss(im,xy=None,theta=None):
+def fitgauss(im, theta=0):
     """ Fit gaussian function to image
         im:    2D array with image
-        xy:    Initial guess for x, y, optional, default: pos of max in im
-        theta: angle of ellipse gaussian towards x-axis
-            any number: fit with theta fixed
-            True:       fit theta
-            False/None: no ellipticity
+        theta: Fixed theta to use
         q:  [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
         dq: errors (std) on q
     """
-    if xy is None:
-        xy = np.unravel_index(np.nanargmax(im.T),np.shape(im))
-    xy = np.array(xy)
+    xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)))
     r = 5
-    jm = crop(im,(xy[0]-r,xy[0]+r+1),(xy[1]-r,xy[1]+r+1))
+    jm = crop(im, (xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))
     p = fitgaussint(jm)
-    if (p[2]>8) | (p[3]<0.1):
-        q = np.full(7, np.nan)
-        dq = np.full(7, np.nan)
-        return q, dq
-    p[0:2] += (xy-r)
-    s = 2*np.ceil(p[2])
-    jm = crop(im,(p[0]-s,p[0]+s+1),(p[1]-s,p[1]+s+1))
+    if (p[2] > 8) | (p[3] < 0.1):
+        q = np.ones(7)
+        return q
+    p[0:2] += (xy - r)
+    s = 2 * np.ceil(p[2])
+    jm = crop(im, (p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))
     S = np.shape(jm)
-    p[0:2] -= (xy-s)
-    if theta is True:
-        p = np.append(p,(1,0))
-        g = lambda pf: np.sum((jm-gaussian(pf,S[0],S[1]))**2)
-    elif (theta is False) or (theta is None):
-        g = lambda pf: np.sum((jm-gaussian(np.append(pf,(1,0)),S[0],S[1]))**2)
-    else:
-        p = np.append(p,1)
-        g = lambda pf: np.sum((jm-gaussian(np.append(pf,theta),S[0],S[1]))**2)
-    r  = scipy.optimize.minimize(g,p,options={'disp': False, 'maxiter': 1e5})
-    q  = r.x
+    p[0:2] -= (xy - s)
+    xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
+    p = np.append(p, 1)
+    g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv)) ** 2)
+
+    r = scipy.optimize.minimize(g, p, options={'disp': False, 'maxiter': 1e5})
+    q = r.x
+
     q[2] = np.abs(q[2])
-    q[0:2] += (xy-s)
-    dq = np.sqrt(r.fun/(np.size(jm)-np.size(q))*np.diag(r.hess_inv))
-    if len(q) == 5:
-        q = np.append(q, (1,0))
-        dq = np.append(dq, (0,0))
-    elif len(q) == 6:
-        q = np.append(q, theta)
-        dq = np.append(dq, 0)
+    q[0:2] += (xy - s)
+    q = np.append(q, theta)
     q[5] = np.abs(q[5])
-    return q, dq
+
+    return q
 
 def fg(im, Theta, f):
     if np.ndim(im) == 1:
@@ -82,9 +104,7 @@ def fg(im, Theta, f):
         im = np.array(im)
     im -= scipy.ndimage.gaussian_filter(im, f * 1.1)
     im = scipy.ndimage.gaussian_filter(im, f / 1.1)
-    q, _ = fitgauss(im, None, Theta)
-    q[np.isnan(q)] = 1
-    return q
+    return fitgauss(im, Theta)
 
 def fitgaussint(im):
     """ Initial guess for gaussfit
@@ -103,19 +123,18 @@ def fitgaussint(im):
     q[2] = np.sqrt(np.sum(jm))
     return q
 
-def crop(im,x,y,m=np.nan):
+def crop(im, x, y, m=np.nan):
     """ crops image im, limits defined by min(x)..max(y), when these limits are
         outside im the resulting pixels will be filled with mean(im)
         wp@tl20181129
     """
-    x=np.array(x).astype(int)
-    y=np.array(y).astype(int)
-    S=np.array(np.shape(im))
-    R=np.array([[min(y),max(y)],[min(x),max(x)]]).astype(int)
-    r=R.copy()
-    r[R[:,0]<1,0]=1
-    r[R[:,1]>S,1]=S[R[:,1]>S]
-    jm=np.zeros(S)
-    jm=im[r[0,0]:r[0,1],r[1,0]:r[1,1]]
+    x = np.array(x).astype(int)
+    y = np.array(y).astype(int)
+    S = np.array(np.shape(im))
+    R = np.array([[min(y),max(y)],[min(x),max(x)]]).astype(int)
+    r = R.copy()
+    r[R[:,0]<1,0] = 1
+    r[R[:,1]>S,1] = S[R[:,1]>S]
+    jm = im[r[0,0]:r[0,1],r[1,0]:r[1,1]]
     jm =   np.concatenate((np.full((r[0,0]-R[0,0],np.shape(jm)[1]),m),jm,np.full((R[0,1]-r[0,1],np.shape(jm)[1]),m)),0)
     return np.concatenate((np.full((np.shape(jm)[0],r[1,0]-R[1,0]),m),jm,np.full((np.shape(jm)[0],R[1,1]-r[1,1]),m)),1)

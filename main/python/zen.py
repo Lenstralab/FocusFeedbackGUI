@@ -4,13 +4,57 @@ import numpy as np
 import time
 import re
 
+#global property to keep track of indices of drawings in ZEN across threads
+zendrawinglist = []
+
+def cst(str):
+    NoButtonMouseMove = 202
+    LButtonMouseMove = 201
+    LeftButtonDown = 203
+    LeftButtonUp = 204
+    RButtonMouseMove = 207
+    RightButtonDown = 208
+    RightButtonUp = 209
+
+    Circle = 6
+    ClosedArrow = 12
+    ClosedBezier = 10
+    ClosedPolyLine = 8
+    Ellipse = 5
+    Line = 2
+    #None = 0
+    OpenArrow = 11
+    OpenBezier = 9
+    OpenPolyLine = 7
+    Palette = 14
+    Rectangle = 4
+    ScaleBar = 3
+    Select = 1
+    Text = 13
+
+    try:
+        return eval('{}'.format(str))
+    except:
+        return 0
+
 class zen:
-    def __init__(self):
+    def __init__(self, EventHandler=None):
+        self.EventHandler = EventHandler
         self.ConnectZEN()
         self.ProgressCoord = self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates
         self.LastProgressCoord = self.ProgressCoord()
         #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
-        
+
+    @property
+    def ZDL(self):
+        global zendrawinglist
+        return zendrawinglist
+
+    @ZDL.setter
+    def ZDL(self, val):
+        global zendrawinglist
+        zendrawinglist = val
+
     def reconnect(fun):
         def f(self,*args):
             try:
@@ -22,6 +66,17 @@ class zen:
                 self.ConnectZEN()
                 fun(*args)
         return f
+
+    def EnableEvent(self, event):
+        self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), True)
+
+    def DisableEvent(self, event):
+        self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), False)
+
+    @property
+    def MousePosition(self):
+        X = self.VBA.Lsm5.DsRecordingActiveDocObject.GetCurrentMousePosition()
+        return (X[5] + 1, X[4] + 1)
 
     @property
     def MagStr(self):
@@ -55,22 +110,25 @@ class zen:
     def ConnectZEN(self):
         pythoncom.CoInitialize()
         self.ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
-        self.VBA = win32com.client.Dispatch('Lsm5Vba.Application')
+        if self.EventHandler is None:
+            self.VBA = win32com.client.Dispatch('Lsm5Vba.Application')
+        else:
+            self.VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler(ZEN=self))
         #self.AimImage = win32com.client.Dispatch('AimImage.Image')
         #self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
         self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
         self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
-        
+
     def DisconnectZEN(self):
         self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
         self.ZEN = None
         self.VBA = None
-        
+
     def NewThreadZEN(self):
         pythoncom.CoInitialize()
         self.VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.VBAid, pythoncom.IID_IDispatch))
-        self.ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.ZENid, pythoncom.IID_IDispatch))    
-		
+        self.ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.ZENid, pythoncom.IID_IDispatch))
+
     def SaveDouble(self, name, value):
         self.ZEN.SetDouble(name, value)
         #self.AET.Image(0).ApplicationTags().SetDoubleValue(name, value)
@@ -88,7 +146,7 @@ class zen:
     def FrameSize(self):
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
         return ScanDoc.GetDimensionX(), ScanDoc.GetDimensionY()
-        
+
     def GetFrameCenter(self, Channel=1, Size=32):
         Size = 2*int((Size+1)/2) #Ensure evenness
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
@@ -106,7 +164,7 @@ class zen:
     @property
     def GetTime(self):
         return self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates()[2]
-    
+
     def NextFrameWait(self, TimeOut=5):
         SleepTime = 0.02
         WaitTime = 0.0
@@ -135,20 +193,61 @@ class zen:
             TI = self.ZEN.GUI.Acquisition.Channels.Track.Channel.Camera.ExposureTime.value / 1000
         return TI
 
-    def DrawEllipse(self, X, Y, R, E, T, Color=65025, LineWidth=2):
+    def DrawEllipse(self, X, Y, R, E, T, Color=65025, LineWidth=2, index=None):
         #X, Y, R in pixels, T in rad
         if E <= 0:
             E = 1
         Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
 
-        #Remove all previous drawings
-        Overlay.RemoveAllDrawingElements()
+        index = self.ManipulateDrawingList(Overlay, index)
 
         Overlay.LineWidth = LineWidth
         Overlay.Color = Color #Green
 
         Overlay.AddDrawingElement(5,3,(X,X+R*np.sqrt(E)*np.cos(T),X+R/np.sqrt(E)*np.sin(T)),(Y,Y-R*np.sqrt(E)*np.sin(T),Y+R/np.sqrt(E)*np.cos(T)))
-        return
+        return index
+
+    def DrawRectangle(self, X, Y, Sx, Sy, Color=65025, LineWidth=2, index=None):
+        Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+
+        index = self.ManipulateDrawingList(Overlay, index)
+
+        Overlay.LineWidth = LineWidth
+        Overlay.Color = Color #Green
+
+        Overlay.AddDrawingElement(4,2,(X-Sx/2,X+Sx/2),(Y-Sy/2,Y+Sy/2))
+        return index
+
+    def RemoveDrawings(self):
+        self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay().RemoveAllDrawingElements()
+        self.ZDL = []
+
+    def RemoveDrawing(self, index):
+        Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+        lst = self.ZDL
+        if Overlay.GetNumberDrawingElements() != len(lst):
+            lst = list(range(Overlay.GetNumberDrawingElements()))
+        if index in lst:
+            Overlay.RemoveDrawingElement(lst.index(index))
+            lst.remove(index)
+            self.ZDL = lst
+
+    def ManipulateDrawingList(self, Overlay, index):
+        lst = self.ZDL
+        if Overlay.GetNumberDrawingElements() != len(lst):
+            lst = list(range(Overlay.GetNumberDrawingElements()))
+        if index is not None:
+            if index in lst:
+                Overlay.RemoveDrawingElement(lst.index(index))
+                lst.remove(index)
+        else:
+            if not lst:
+                index = 0
+            else:
+                index = max(lst) + 1
+        lst.append(index)
+        self.ZDL = lst
+        return index
 
     @property
     def PiezoPos(self):
@@ -198,5 +297,7 @@ class zen:
         return
 
     @property
-    def duolinkcalpat(self):
-        pass
+    def DLFilter(self):
+        FS = self.VBA.Lsm5.Hardware().CpFilterSets()
+        FS.Select('2C_FilterSlider')
+        return FS.FilterSetIndex()

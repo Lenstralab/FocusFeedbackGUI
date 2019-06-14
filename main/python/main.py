@@ -13,26 +13,28 @@ from matplotlib.figure import Figure
 import cylinderlens as cyl
 import functions
 import config
+from events import events
 from pid import pid
 from zen import zen
 
 np.seterr(all='ignore');
 
 def errwrap(fun,default,*args):
+    """ returns either the result of fun(*args) or default when an error occurs
+    """
     try:
         return fun(*args)
     except:
         return default
-        
-def stuple(x):
-    a = []
-    a.append(x)
-    return tuple(a)
-    
-def thread(fun): #decorator to run function in a separate thread to keep the gui responsive
+
+def thread(fun):
+    """ decorator to run function in a separate thread to keep the gui responsive
+    """
     return lambda *args: Thread(target=fun, args=args).start()
 
 def firstargonly(fun):
+    """ decorator that only passes the first argument to a function
+    """
     return lambda *args: fun(args[0])
 
 class App(QMainWindow):
@@ -44,6 +46,7 @@ class App(QMainWindow):
         self.width = 640
         self.height = 400
         self.stop = False
+        self.docenter = False
         self.conf = config.conf()
 
         self.zen = zen()
@@ -51,6 +54,9 @@ class App(QMainWindow):
         self.q = list()
         self.maxStep = 1
         self.theta = 0
+
+        self.ellipse = None
+        self.rectangle = None
 
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -67,6 +73,7 @@ class App(QMainWindow):
 
         self.mapfun()
         self.magstrchk()
+        events(self)
 
         self.setCentralWidget(self.central_widget)
         self.show()
@@ -84,12 +91,23 @@ class App(QMainWindow):
 
     @thread
     def magstrchk(self):
+        """
+        handles events from ZEN
+        """
         Z = zen()
         LMagStr = Z.MagStr
+        DLF = Z.DLFilter
         while not self.stop:
+            #change of magnification
             if not LMagStr == Z.MagStr:
                 self.confopen(self.conf.filename)
                 LMagStr = Z.MagStr
+
+            #change of duolink filter
+            if not DLF == Z.DLFilter:
+                self.dlf.setText(self.dlfs.currentText().split(' & ')[Z.DLFilter])
+                DLF = Z.DLFilter
+
             time.sleep(0.5)
         Z.DisconnectZEN()
 
@@ -124,6 +142,10 @@ class App(QMainWindow):
         self.contrunchkbx.setToolTip('Stay primed')
         self.contrunchkbx.toggled.connect(self.stayprimed)
 
+        self.centerbtn = QPushButton('Center')
+        self.centerbtn.setToolTip('Push, then click on image')
+        self.centerbtn.clicked.connect(self.center)
+
         self.startbtn = QPushButton('Prime for experiment')
         self.startbtn.setToolTip('Prime for experiment')
         self.startbtn.clicked.connect(self.run)
@@ -146,6 +168,7 @@ class App(QMainWindow):
 
         self.buttons = QHBoxLayout()
         self.buttons.addWidget(self.contrunchkbx)
+        self.buttons.addWidget(self.centerbtn)
         self.buttons.addWidget(self.startbtn)
         self.buttons.addWidget(self.stopbtn)
         self.buttons.addWidget(self.rdb)
@@ -182,35 +205,43 @@ class App(QMainWindow):
             self.grid.addWidget(self.unt[-1], i, 3)
 
         self.channel = 1
-        self.grid.addWidget(QLabel('Feedback channel'), 0, 4)
-        self.rdbch = RadioButtons(('0', '1'), init_state=self.channel, callback=self.changechannel)
+        self.grid.addWidget(QLabel('Feedback channel:'), 0, 4)
+        self.rdbch = RadioButtons(('R', 'G'), init_state=self.channel, callback=self.changechannel)
         self.grid.addWidget(self.rdbch, 0, 5)
 
         self.cyllensdrp = []
-        self.grid.addWidget(QLabel('Cylindrical lens 0'), 1, 4)
+        self.grid.addWidget(QLabel('Cylindrical lens R:'), 1, 4)
         self.cyllensdrp.append(QComboBox())
         self.cyllensdrp[-1].addItems(['None','A','B'])
         self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
         self.grid.addWidget(self.cyllensdrp[-1], 1, 5)
 
-        self.grid.addWidget(QLabel('Cylindrical lens 1'), 2, 4)
+        self.grid.addWidget(QLabel('Cylindrical lens G:'), 2, 4)
         self.cyllensdrp.append(QComboBox())
         self.cyllensdrp[-1].addItems(['None','A', 'B'])
         self.cyllensdrp[-1].setCurrentIndex(1)
         self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
         self.grid.addWidget(self.cyllensdrp[-1], 2, 5)
 
-        self.grid.addWidget(QLabel('theta:'), 3, 4)
+        self.grid.addWidget(QLabel('Duolink filterset:'), 3, 4)
+        self.dlfs = QComboBox()
+        self.dlfs.addItems(['488/561 & 488/640', '561/640 & empty'])
+        self.dlfs.currentIndexChanged.connect(self.changeDL)
+        self.grid.addWidget(self.dlfs, 3, 5)
+        self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+        self.grid.addWidget(self.dlf, 3, 6)
+
+        self.grid.addWidget(QLabel('theta:'), 4, 4)
         self.thetafld = QLineEdit()
         self.thetafld.textChanged.connect(self.changetheta)
-        self.grid.addWidget(self.thetafld, 3, 5)
-        self.grid.addWidget(QLabel('rad'), 3, 6)
+        self.grid.addWidget(self.thetafld, 4, 5)
+        self.grid.addWidget(QLabel('rad'), 4, 6)
 
-        self.grid.addWidget(QLabel('Max stepsize:'), 4, 4)
+        self.grid.addWidget(QLabel('Max stepsize:'), 5, 4)
         self.maxStepfld = QLineEdit()
         self.maxStepfld.textChanged.connect(self.changemaxStep)
-        self.grid.addWidget(self.maxStepfld, 4, 5)
-        self.grid.addWidget(QLabel('um'), 4, 6)
+        self.grid.addWidget(self.maxStepfld, 5, 5)
+        self.grid.addWidget(QLabel('um'), 5, 6)
 
         self.tab2.setLayout(self.grid)
 
@@ -273,8 +304,18 @@ class App(QMainWindow):
         self.theta = float(val)
 
     def changechannel(self, val):
-        self.channel = int(val)
+        if val=='R':
+            self.channel = 0
+        else:
+            self.channel = 1
         self.confopen(self.conf.filename)
+
+    def changeDL(self, *args):
+        self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+
+    def center(self):
+        self.docenter = True
+        self.centerbtn.setText('Waiting for click')
 
     @property
     def cmstr(self):
@@ -300,6 +341,9 @@ class App(QMainWindow):
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
         Z = zen()  #cannot move com-objects from one thread to another :(
+        FS = Z.FrameSize
+        Z.RemoveDrawings()
+        self.rectangle = Z.DrawRectangle(FS[0]/2, FS[1]/2, Size, Size, index=self.rectangle)
         while True:
             mode = self.rdb.state.lower()
             self.startbtn.setText('Wait for experiment to start')
@@ -309,12 +353,26 @@ class App(QMainWindow):
                 time.sleep(SleepTime)
 
             #Experiment has started:
+            FS = Z.FrameSize
+            self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
             G = Z.PiezoPos
             pfilename = Z.FileName[:-3]+'pzl'
-            metafile = config.conf(pfilename)
-            #metafile.
             if not os.path.isfile(pfilename):
-                file = open(pfilename,'w+')
+                metafile = config.conf(pfilename)
+                metafile.FeedbackChannel = self.channel
+                metafile.CylLens = [self.cyllensdrp[i].currentText() for i in range(2)]
+                metafile.DLFilterSet = self.dlfs.currentText()
+                metafile.DLFilterChannel = Z.DLFilter
+                metafile.q = self.q
+                metafile.theta = self.theta
+                metafile.maxStep = self.maxStep
+                metafile.ROISize = Size
+                file = open(pfilename, 'a+')
+
+                if self.channel == 0:
+                    wavelength = 646
+                else:
+                    wavelength = 510
 
                 self.eplot.remove_data()
                 self.pplot.remove_data()
@@ -322,7 +380,7 @@ class App(QMainWindow):
                 if mode == 'pid':
                     P = pid(0, G, self.maxStep, Z.TimeInterval, gain)
 
-                f = 510 / 2 / Z.ObjectiveNA / Z.pxsize
+                f = wavelength / 2 / Z.ObjectiveNA / Z.pxsize
                 fwhmlim = f * 2 * np.sqrt(2 * np.log(2))
                 SizeX, SizeY = Z.FrameSize
                 TimeInterval = Z.TimeInterval
@@ -331,16 +389,17 @@ class App(QMainWindow):
 
                 TimeMem = 0
                 while (Z.ExperimentRunning) & (not self.stop):
-                    Frame, Time = Z.GetFrameCenter(Size, self.channel)
+                    Frame, Time = Z.GetFrameCenter(self.channel, Size)
                     if Time < TimeMem:
                         TTime = TimeMem + 1
                     else:
                         TTime = Time
-                    file.write('{},{},{}\n'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
+                    file.write('{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
                     # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
                     # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
                     a = functions.fg(Frame, self.theta, f)
+                    file.write('{},{},{},{},{},{}\n'.format(*a))
 
                     #Update the piezo position:
                     if mode == 'pid':
@@ -364,7 +423,7 @@ class App(QMainWindow):
                     R = float(a[2])
                     E = float(a[5])
 
-                    Z.DrawEllipse(X, Y, R, E, self.theta)
+                    self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
 
                     if mode == 'pid':
                         if Pz > (G + 5):
@@ -380,11 +439,13 @@ class App(QMainWindow):
 
                 #After the experiment:
                 file.close()
+                Z.RemoveDrawing(self.ellipse)
             else:
                 time.sleep((SleepTime))
             if not self.contrunchkbx.isChecked():
                 break
 
+        Z.RemoveDrawing(self.rectangle)
         Z.DisconnectZEN()
         self.stop = False
         self.startbtn.setText('Prime for experiment')
