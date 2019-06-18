@@ -49,16 +49,13 @@ def EventHandler(CLG):
         @errwrap
         def OnThrowEvent(self, *args):
             z = zen()
-            if args[0] == cst('LeftButtonDown') and self.clg.docenter:
-                # print(('OnThrowEvent:', args, X))
-                #self.clg.docenter = False
-                #self.clg.centerbtn.setText('Center')
+            if args[0] == cst('LeftButtonDown') and self.clg.centerbox.isChecked():
+                #print(('OnThrowEvent:', args))
                 X = z.MousePosition
                 FS = z.FrameSize
                 pxsize = z.pxsize
                 d = [(FS[i]/2 - X[i]) * pxsize/1000 for i in range(2)]
                 d[1] *= -1
-                #print('Moving ({}; {})  um.'.format(*d))
                 z.MoveStageRel(*d)
             z.DisconnectZEN()
 
@@ -66,7 +63,22 @@ def EventHandler(CLG):
         @errwrap
         def OnThrowPropertyEvent(self, *args):
             z = zen()
-            print(('OnThrowProperyEvent:', args))
+            #print(('OnThrowProperyEvent:', args))
+
+            #make sure lmb event is enabled on a new document
+            if self.clg.curzentitle != z.Title:
+                self.clg.curzentitle = z.Title
+                z.EnableEvent('LeftButtonDown')
+
+                #draw a black rectangle in the map when a new document is saved
+                if z.FileName[-4:] == '.czi':
+                    LP = z.StagePos
+                    FS = z.FrameSize
+                    pxsize = z.pxsize
+                    self.clg.map.append_data_docs(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
+                    self.clg.map.draw()
+                registereventwithdelay('LeftButtonDown', 2)
+
             if args[1] == 'TransmissionSpot' and self.clg.MagStr != z.MagStr:
                 self.clg.MagStr = z.MagStr
                 self.clg.confopen(self.clg.conf.filename)
@@ -75,7 +87,10 @@ def EventHandler(CLG):
                 self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[z.DLFilter])
             elif args[1] == 'Stage':
                 LP = z.StagePos
-                self.clg.map.numel_data(LP[0], LP[1])
+                FS = z.FrameSize
+                pxsize = z.pxsize
+                self.clg.map.numel_data(LP[0]/1000, LP[1]/1000, FS[0]*pxsize/1e6, FS[1]*pxsize/1e6)
+                self.clg.map.draw()
             z.DisconnectZEN()
 
     return EventHandlerCls
@@ -88,3 +103,10 @@ def events(clg):
     while not clg.stop:
         sleep(.01)
         pythoncom.PumpWaitingMessages()
+
+@thread
+def registereventwithdelay(event, delay):
+    sleep(delay)
+    z = zen()
+    z.EnableEvent(event)
+    z.DisconnectZEN()

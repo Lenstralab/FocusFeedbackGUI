@@ -74,6 +74,10 @@ class zen:
         self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), False)
 
     @property
+    def IsBusy(self):
+        return self.VBA.Lsm5.DsRecordingActiveDocObject.IsBusy()
+
+    @property
     def MousePosition(self):
         X = self.VBA.Lsm5.DsRecordingActiveDocObject.GetCurrentMousePosition()
         return (X[5] + 1, X[4] + 1)
@@ -137,6 +141,10 @@ class zen:
     @property
     def FileName(self):
         return self.ZEN.GUI.Document.FullFileName.value
+
+    @property
+    def Title(self):
+        return self.VBA.Lsm5.DsRecordingActiveDocObject.Title()
 
     @property
     def GetCurrentZ(self):

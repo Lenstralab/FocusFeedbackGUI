@@ -9,6 +9,8 @@ from PyQt5.QtWidgets import *
 from fbs_runtime.application_context import ApplicationContext
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib import rcParams, pyplot
+rcParams.update({'figure.autolayout': True})
 
 import cylinderlens as cyl
 import functions
@@ -40,16 +42,17 @@ def firstargonly(fun):
 class App(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.subqueue = []
         self.left = 1500
         self.top = 50
         self.title = 'Cylinder lens feedback GUI'
         self.width = 640
-        self.height = 400
+        self.height = 1024
         self.stop = False
-        self.docenter = False
         self.conf = config.conf()
 
         self.zen = zen()
+        self.curzentitle = self.zen.Title
 
         self.q = list()
         self.maxStep = 1
@@ -74,13 +77,14 @@ class App(QMainWindow):
         self.layout.addWidget(self.tabs)
 
         events(self)
+        self.runsub()
 
         self.setCentralWidget(self.central_widget)
         self.show()
 
     def menus(self):
         mainMenu = self.menuBar()
-        fileMenu = mainMenu.addMenu('&File')
+        fileMenu = mainMenu.addMenu('&Configuration')
 
         openAction = QAction('&Open', self)
         openAction.setShortcut('Ctrl+O')
@@ -109,9 +113,9 @@ class App(QMainWindow):
         self.contrunchkbx.setToolTip('Stay primed')
         self.contrunchkbx.toggled.connect(self.stayprimed)
 
-        self.centerbtn = QPushButton('Center')
-        self.centerbtn.setToolTip('Push, then click on image')
-        self.centerbtn.clicked.connect(self.center)
+        self.centerbox = QCheckBox('Center on click')
+        self.centerbox.setToolTip('Push, then click on image')
+        self.centerbox.toggled.connect(self.tglcenterbox)
 
         self.startbtn = QPushButton('Prime for experiment')
         self.startbtn.setToolTip('Prime for experiment')
@@ -124,26 +128,47 @@ class App(QMainWindow):
 
         self.rdb = RadioButtons(('Zhuang', 'PID'))
 
-        self.eplot = PlotCanvas(None, 5, 1)
-        self.eplot.ax.set_yscale('log')
-        self.eplot.ax.set_xlabel('Time (frames)')
+        self.plot = PlotCanvas()
+        self.eplot = SubPlot(self.plot, 611)
+        #self.eplot.ax.set_yscale('log')
         self.eplot.ax.set_ylabel('Ellipticity')
+        self.eplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
-        self.pplot = PlotCanvas(None, 5, 1)
+        self.iplot = SubPlot(self.plot, 612)
+        self.iplot.ax.set_ylabel('Intensity')
+        self.iplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.splot = SubPlot(self.plot, 613)
+        self.splot.ax.set_ylabel('Sigma (nm)')
+        self.splot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.oplot = SubPlot(self.plot, 614)
+        self.oplot.ax.set_ylabel('Offset')
+        self.oplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.pplot = SubPlot(self.plot, 615)
         self.pplot.ax.set_xlabel('Time (frames)')
         self.pplot.ax.set_ylabel('Piezo pos (µm)')
 
+        self.xyplot = SubPlot(self.plot, (6, 3, 16), '.r')
+        self.xyplot.ax.set_xlabel('x (nm)')
+        self.xyplot.ax.set_ylabel('y (nm)')
+        self.xyplot.ax.set_aspect('equal', adjustable='datalim')
+
+        self.siplot = SubPlot(self.plot, (6, 3, 17), '.r')
+        self.siplot.ax.set_xlabel('s (nm)')
+        self.siplot.ax.set_ylabel('i')
+
         self.buttons = QHBoxLayout()
         self.buttons.addWidget(self.contrunchkbx)
-        self.buttons.addWidget(self.centerbtn)
+        self.buttons.addWidget(self.centerbox)
         self.buttons.addWidget(self.startbtn)
         self.buttons.addWidget(self.stopbtn)
         self.buttons.addWidget(self.rdb)
 
         self.tab1.layout = QVBoxLayout(self.tab1)
         self.tab1.layout.addLayout(self.buttons)
-        self.tab1.layout.addWidget(self.eplot)
-        self.tab1.layout.addWidget(self.pplot)
+        self.tab1.layout.addWidget(self.plot)
 
     def settab2(self):
         self.tab2 = QWidget()
@@ -218,13 +243,19 @@ class App(QMainWindow):
         self.tab3 = QWidget()
         self.tabs.addTab(self.tab3, 'Map')
 
-        self.map = PlotCanvas(None, 4, 4)
+        self.map = SubPatchPlot(PlotCanvas(), color=(0.6, 1, 0.8))
         self.map.ax.invert_xaxis()
         self.map.ax.invert_yaxis()
         self.map.ax.set_xlabel('x')
-        self.map.ax.set_xlabel('y')
+        self.map.ax.set_ylabel('y')
+        self.map.ax.set_aspect('equal', adjustable='datalim')
         self.tab3.layout = QVBoxLayout(self.tab3)
-        self.tab3.layout.addWidget(self.map)
+        self.tab3.layout.addWidget(self.map.canvas)
+        LP = self.zen.StagePos
+        FS = self.zen.FrameSize
+        pxsize = self.zen.pxsize
+        self.map.append_data(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
+        self.map.draw()
 
     def confsave(self, f):
         if not os.path.isfile(f):
@@ -280,13 +311,8 @@ class App(QMainWindow):
     def changeDL(self, *args):
         self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
 
-    def center(self):
-        if self.docenter == False:
-            self.docenter = True
-            self.centerbtn.setText('Waiting for click')
-        else:
-            self.docenter = False
-            self.centerbtn.setText('Center')
+    def tglcenterbox(self):
+        self.zen.EnableEvent('LeftButtonDown')
 
     @property
     def cmstr(self):
@@ -299,6 +325,49 @@ class App(QMainWindow):
     def stayprimed(self):
         if self.contrunchkbx.isChecked():
             self.run()
+
+    @thread
+    def runsub(self):
+        ''' Offload less essential things like updating graphs to a different thread
+        '''
+        Z = zen()
+
+        while not self.stop:
+            if not self.subqueue:
+                time.sleep(0.02)
+            else:
+                file, TimeMem, Time, a, SizeX, SizeY, Size = self.subqueue[0]
+                pxsize = Z.pxsize
+
+                if Time < TimeMem:
+                    TTime = TimeMem + 1
+                else:
+                    TTime = Time
+                file.write('{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
+                file.write('{},{},{},{},{},{}\n'.format(*a))
+                # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
+                # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
+
+                if Time > TimeMem:
+                    if a[5] < 1.3 and a[5] > 1/1.3:
+                        self.eplot.range_data(Time, a[5])
+                    self.iplot.range_data(Time, a[3])
+                    self.splot.range_data(Time, a[2]/2/np.sqrt(2*np.log(2))*pxsize)
+                    self.oplot.range_data(Time, a[4])
+                    self.pplot.range_data(Time, Z.PiezoPos)
+                    self.xyplot.append_data((a[0]-Size/2)*pxsize, (a[1]-Size/2)*pxsize)
+                    self.siplot.append_data(a[2]/2/np.sqrt(2*np.log(2))*pxsize, a[3])
+                    self.plot.draw()
+
+                X = float(a[0] + (SizeX - Size) / 2 + 1)
+                Y = float(a[1] + (SizeY - Size) / 2 + 1)
+                R = float(a[2])
+                E = float(a[5])
+
+                self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
+                _ = self.subqueue.pop(0)
+
+        Z.DisconnectZEN()
 
     @thread
     @firstargonly
@@ -347,8 +416,7 @@ class App(QMainWindow):
                 else:
                     wavelength = 510
 
-                self.eplot.remove_data()
-                self.pplot.remove_data()
+                self.plot.remove_data()
 
                 if mode == 'pid':
                     P = pid(0, G, self.maxStep, Z.TimeInterval, gain)
@@ -363,16 +431,9 @@ class App(QMainWindow):
                 TimeMem = 0
                 while (Z.ExperimentRunning) & (not self.stop):
                     Frame, Time = Z.GetFrameCenter(self.channel, Size)
-                    if Time < TimeMem:
-                        TTime = TimeMem + 1
-                    else:
-                        TTime = Time
-                    file.write('{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
-                    # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
-                    # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
-
                     a = functions.fg(Frame, self.theta, f)
-                    file.write('{},{},{},{},{},{}\n'.format(*a))
+
+                    self.subqueue.append((file, TimeMem, Time, a, SizeX, SizeY, Size))
 
                     #Update the piezo position:
                     if mode == 'pid':
@@ -381,29 +442,18 @@ class App(QMainWindow):
                             F = 0
                         Pz = P(F)
                         Z.PiezoPos = Pz
+
+                        if Pz > (G + 5):
+                            P = pid(0, G, self.maxStep, TimeInterval, gain)
                     else:
                         if np.abs(np.log(a[5]))>1 or a[2]<fwhmlim/4 or a[2]>fwhmlim*4:
                             z = 0
                         else:
                             z = np.clip(cyl.findz(a[5], self.q), -self.maxStep, self.maxStep)
                         Z.MovePiezoRel(-z)
-                    if Time > TimeMem:
-                        self.eplot.range_data(Time, a[5])
-                        self.pplot.range_data(Time, Z.PiezoPos)
-
-                    X = float(a[0] + (SizeX-Size) / 2 + 1)
-                    Y = float(a[1] + (SizeY-Size) / 2 + 1)
-                    R = float(a[2])
-                    E = float(a[5])
-
-                    self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
-
-                    if mode == 'pid':
-                        if Pz > (G + 5):
-                            P = pid(0, G, self.maxStep, TimeInterval, gain)
 
                     #Wait for next frame:
-                    while ((Z.GetTime-1) == Time) & Z.ExperimentRunning & (not self.stop):
+                    while ((Z.GetTime-1) == Time) and Z.ExperimentRunning and (not self.stop):
                         time.sleep(TimeInterval / 4)
                     if Time < TimeMem:
                         break
@@ -411,10 +461,12 @@ class App(QMainWindow):
                     TimeMem = Time
 
                 #After the experiment:
+                while self.subqueue and not self.stop:
+                    time.sleep(SleepTime)
                 file.close()
                 Z.RemoveDrawing(self.ellipse)
             else:
-                time.sleep((SleepTime))
+                time.sleep(SleepTime)
             if not self.contrunchkbx.isChecked():
                 break
 
@@ -454,36 +506,44 @@ class RadioButtons(QWidget):
 class PlotCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.ax = self.fig.add_subplot(111)
- 
+        self.subplot = []
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
- 
         FigureCanvas.setSizePolicy(self, QSizePolicy.Expanding, QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
-        self.plt, = self.ax.plot([], 'r-')
-        self.draw()
-        
-    def append_data(self,x,y=None):
+
+    def remove_data(self):
+        for subplot in self.subplot:
+            subplot.remove_data()
+
+class SubPlot:
+    def __init__(self, canvas, position=111, linespec='-r'):
+        if isinstance(position, tuple):
+            self.ax = canvas.fig.add_subplot(*position)
+        else:
+            self.ax = canvas.fig.add_subplot(position)
+        self.plt, = self.ax.plot([], linespec)
+        canvas.subplot.append(self)
+        self.canvas = canvas
+
+    def append_data(self, x, y=None):
         if y is None:
             y = x
-            x = errwrap(np.nanmax,-1,self.plt.get_xdata()) + np.arange(errwrap(len,1,x)) + 1
-        x = np.hstack((self.plt.get_xdata(),x))
-        y = np.hstack((self.plt.get_ydata(),y))
+            x = errwrap(np.nanmax, -1, self.plt.get_xdata()) + np.arange(errwrap(len, 1, x)) + 1
+        x = np.hstack((self.plt.get_xdata(), x))
+        y = np.hstack((self.plt.get_ydata(), y))
         self.plt.set_xdata(x)
         self.plt.set_ydata(y)
         self.ax.relim()
         self.ax.autoscale_view()
-        self.draw()
-        
+
     def range_data(self, x, y, range=100):
-        x = np.hstack((self.plt.get_xdata(),x))
-        y = np.hstack((self.plt.get_ydata(),y))
-        self.plt.set_ydata(y[x > np.nanmax(x)-range])
-        self.plt.set_xdata(x[x > np.nanmax(x)-range])
+        x = np.hstack((self.plt.get_xdata(), x))
+        y = np.hstack((self.plt.get_ydata(), y))
+        self.plt.set_ydata(y[x > np.nanmax(x) - range])
+        self.plt.set_xdata(x[x > np.nanmax(x) - range])
         self.ax.relim()
         self.ax.autoscale_view()
-        self.draw()
 
     def numel_data(self, x, y, range=10000):
         x = np.hstack((self.plt.get_xdata(), x))
@@ -492,13 +552,57 @@ class PlotCanvas(FigureCanvas):
         self.plt.set_xdata(x[-range:])
         self.ax.relim()
         self.ax.autoscale_view()
-        self.draw()
 
     def remove_data(self):
         self.plt.set_xdata([])
         self.plt.set_ydata([])
-        self.draw()
-        
+
+    def draw(self):
+        self.canvas.draw()
+
+class SubPatchPlot:
+    def __init__(self, canvas, position=111, color='r'):
+        if isinstance(position, tuple):
+            self.ax = canvas.fig.add_subplot(*position)
+        else:
+            self.ax = canvas.fig.add_subplot(position)
+        canvas.subplot.append(self)
+        self.canvas = canvas
+        self.rects = []
+        #self.docs = []
+        self.color = color
+
+    def numel_data(self, x, y, dx, dy=None, range=1000):
+        if self.rects:
+            while len(self.rects) >= range:
+                self.rects.pop(0).remove()
+        self.append_data(x, y, dx, dy)
+
+    def append_data(self, x, y, dx, dy=None):
+        if dy is None:
+            dy = dx
+        rect = pyplot.Rectangle((x-dx/2, y-dy/2), dx, dy, facecolor=self.color, alpha=1, edgecolor='g', zorder=1)
+        self.ax.add_patch(rect)
+        if self.rects:
+            self.rects[-1].set_edgecolor(None)
+        self.rects.append(rect)
+        self.ax.relim()
+        self.ax.autoscale_view()
+
+    def append_data_docs(self, x, y, dx, dy=None):
+        if dy is None:
+            dy = dx
+        rect = pyplot.Rectangle((x-dx/2, y-dy/2), dx, dy, fill=False, alpha=1, edgecolor='k', zorder=10)
+        self.ax.add_patch(rect)
+        if self.rects:
+            self.rects[-1].set_edgecolor(None)
+        #self.docs.append(rect)
+        self.ax.relim()
+        self.ax.autoscale_view()
+
+    def draw(self):
+        self.canvas.draw()
+
 class AppContext(ApplicationContext):           # 1. Subclass ApplicationContext
     def run(self):                              # 2. Implement run()
         window = App()
