@@ -343,8 +343,8 @@ class App(QMainWindow):
                     TTime = TimeMem + 1
                 else:
                     TTime = Time
-                file.write('{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
-                file.write('{},{},{},{},{},{}\n'.format(*a))
+                file.write('- [{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
+                file.write('{},{},{},{},{},{}]\n'.format(*a))
                 # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
                 # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
@@ -410,6 +410,7 @@ class App(QMainWindow):
                 metafile.maxStep = self.maxStep
                 metafile.ROISize = Size
                 file = open(pfilename, 'a+')
+                file.write('p:\n')
 
                 if self.channel == 0:
                     wavelength = 646
