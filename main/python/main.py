@@ -1,8 +1,9 @@
-import sys
-import os
-import time
+from sys import exit
+from os.path import isfile
+from time import sleep
 from functools import partial
 from threading import Thread
+from multiprocessing import Process, Queue, Manager
 
 import numpy as np
 from PyQt5.QtWidgets import *
@@ -39,10 +40,78 @@ def firstargonly(fun):
     """
     return lambda *args: fun(args[0])
 
+def feedbackloop(Queue, NameSpace):
+    # this is run in a separate process
+    np.seterr(all='ignore');
+    Z = zen()
+    while not NameSpace.stop:
+        if NameSpace.run:
+            mode = NameSpace.mode
+            Size = NameSpace.Size
+            gain = NameSpace.gain
+            channel = NameSpace.channel
+            q = NameSpace.q
+            theta = NameSpace.theta
+            maxStep = NameSpace.maxStep
+            TimeInterval = Z.TimeInterval
+            G = Z.PiezoPos
+            TimeMem = 0
+
+            if channel == 0:
+                wavelength = 646
+            else:
+                wavelength = 510
+            f = wavelength / 2 / Z.ObjectiveNA / Z.pxsize
+            fwhmlim = f * 2 * np.sqrt(2 * np.log(2))
+
+            if mode == 'pid':
+                P = pid(0, G, maxStep, TimeInterval, gain)
+
+            while Z.ExperimentRunning and (not NameSpace.stop):
+                Frame, Time = Z.GetFrameCenter(channel, Size)
+                PiezoPos = Z.PiezoPos
+                FocusPos = Z.GetCurrentZ
+                a = functions.fg(Frame, theta, f)
+
+                if Time < TimeMem:
+                    TTime = TimeMem + 1
+                else:
+                    TTime = Time
+
+                Queue.put((TTime, a, PiezoPos, FocusPos))
+
+                # Update the piezo position:
+                if mode == 'pid':
+                    F = -np.log(a[5])
+                    if np.abs(F) > 1:
+                        F = 0
+                    Pz = P(F)
+                    Z.PiezoPos = Pz
+
+                    if Pz > (G + 5):
+                        P = pid(0, G, maxStep, TimeInterval, gain)
+                else:
+                    if np.abs(np.log(a[5])) > 1 or a[2] < fwhmlim / 4 or a[2] > fwhmlim * 4:
+                        z = 0
+                    else:
+                        z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
+                    Z.MovePiezoRel(-z)
+
+                # Wait for next frame:
+                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop):
+                    sleep(TimeInterval / 4)
+                if Time < TimeMem:
+                    break
+
+                TimeMem = Time
+            NameSpace.run = False
+        else:
+            sleep(0.01)
+    Z.DisconnectZEN()
+
 class App(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.subqueue = []
         self.left = 1500
         self.top = 50
         self.title = 'Cylinder lens feedback GUI'
@@ -54,7 +123,7 @@ class App(QMainWindow):
         self.zen = zen()
         self.curzentitle = self.zen.Title
 
-        self.q = list()
+        self.q = []
         self.maxStep = 1
         self.theta = 0
 
@@ -76,8 +145,14 @@ class App(QMainWindow):
         self.menus()
         self.layout.addWidget(self.tabs)
 
+        self.Queue = Queue()
+        self.NameSpace = Manager().Namespace()
+        self.NameSpace.stop = False
+        self.NameSpace.run = False
+        self.fblprocess = Process(target=feedbackloop, args=(self.Queue, self.NameSpace))
+        self.fblprocess.start()
+
         events(self)
-        self.runsub()
 
         self.setCentralWidget(self.central_widget)
         self.show()
@@ -155,9 +230,15 @@ class App(QMainWindow):
         self.xyplot.ax.set_ylabel('y (nm)')
         self.xyplot.ax.set_aspect('equal', adjustable='datalim')
 
-        self.siplot = SubPlot(self.plot, (6, 3, 17), '.r')
-        self.siplot.ax.set_xlabel('s (nm)')
-        self.siplot.ax.set_ylabel('i')
+        self.xzplot = SubPlot(self.plot, (6, 3, 17), '.r')
+        self.xzplot.ax.set_xlabel('x (nm)')
+        self.xzplot.ax.set_ylabel('z (nm)')
+        self.xzplot.ax.set_aspect('equal', adjustable='datalim')
+
+        self.yzplot = SubPlot(self.plot, (6, 3, 18), '.r')
+        self.yzplot.ax.set_xlabel('y (nm)')
+        self.yzplot.ax.set_ylabel('z (nm)')
+        self.yzplot.ax.set_aspect('equal', adjustable='datalim')
 
         self.buttons = QHBoxLayout()
         self.buttons.addWidget(self.contrunchkbx)
@@ -223,17 +304,21 @@ class App(QMainWindow):
         self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
         self.grid.addWidget(self.dlf, 3, 6)
 
-        self.grid.addWidget(QLabel('theta:'), 4, 4)
+        self.grid.addWidget(QLabel('Duolink filter:'), 4, 4)
+        self.chdlf = RadioButtons(('1', '2'), init_state=self.zen.DLFilter, callback=self.changeDLF)
+        self.grid.addWidget(self.chdlf, 4, 5)
+
+        self.grid.addWidget(QLabel('theta:'), 5, 4)
         self.thetafld = QLineEdit()
         self.thetafld.textChanged.connect(self.changetheta)
-        self.grid.addWidget(self.thetafld, 4, 5)
-        self.grid.addWidget(QLabel('rad'), 4, 6)
+        self.grid.addWidget(self.thetafld, 5, 5)
+        self.grid.addWidget(QLabel('rad'), 5, 6)
 
-        self.grid.addWidget(QLabel('Max stepsize:'), 5, 4)
+        self.grid.addWidget(QLabel('Max stepsize:'), 6, 4)
         self.maxStepfld = QLineEdit()
         self.maxStepfld.textChanged.connect(self.changemaxStep)
-        self.grid.addWidget(self.maxStepfld, 5, 5)
-        self.grid.addWidget(QLabel('um'), 5, 6)
+        self.grid.addWidget(self.maxStepfld, 6, 5)
+        self.grid.addWidget(QLabel('um'), 6, 6)
 
         self.tab2.setLayout(self.grid)
 
@@ -258,7 +343,7 @@ class App(QMainWindow):
         self.map.draw()
 
     def confsave(self, f):
-        if not os.path.isfile(f):
+        if not isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
             f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if f:
@@ -268,7 +353,7 @@ class App(QMainWindow):
             self.conf.maxStep = self.maxStep
 
     def confopen(self, f):
-        if not os.path.isfile(f):
+        if not isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
             f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if f:
@@ -286,6 +371,12 @@ class App(QMainWindow):
             if 'maxStep' in self.conf:
                 self.maxStep = self.conf.maxStep
                 self.maxStepfld.setText('{}'.format(self.maxStep))
+
+    def changeDLF(self, val):
+        if val=='1':
+            self.zen.DLFilter = 0
+        else:
+            self.zen.DLFilter = 1
 
     def changeq(self, i):
         def fun(val):
@@ -327,49 +418,6 @@ class App(QMainWindow):
             self.run()
 
     @thread
-    def runsub(self):
-        ''' Offload less essential things like updating graphs to a different thread
-        '''
-        Z = zen()
-
-        while not self.stop:
-            if not self.subqueue:
-                time.sleep(0.02)
-            else:
-                file, TimeMem, Time, a, SizeX, SizeY, Size = self.subqueue[0]
-                pxsize = Z.pxsize
-
-                if Time < TimeMem:
-                    TTime = TimeMem + 1
-                else:
-                    TTime = Time
-                file.write('- [{},{},{},'.format(TTime, Z.PiezoPos, Z.GetCurrentZ))
-                file.write('{},{},{},{},{},{}]\n'.format(*a))
-                # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
-                # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
-
-                if Time > TimeMem:
-                    if a[5] < 1.3 and a[5] > 1/1.3:
-                        self.eplot.range_data(Time, a[5])
-                    self.iplot.range_data(Time, a[3])
-                    self.splot.range_data(Time, a[2]/2/np.sqrt(2*np.log(2))*pxsize)
-                    self.oplot.range_data(Time, a[4])
-                    self.pplot.range_data(Time, Z.PiezoPos)
-                    self.xyplot.append_data((a[0]-Size/2)*pxsize, (a[1]-Size/2)*pxsize)
-                    self.siplot.append_data(a[2]/2/np.sqrt(2*np.log(2))*pxsize, a[3])
-                    self.plot.draw()
-
-                X = float(a[0] + (SizeX - Size) / 2 + 1)
-                Y = float(a[1] + (SizeY - Size) / 2 + 1)
-                R = float(a[2])
-                E = float(a[5])
-
-                self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
-                _ = self.subqueue.pop(0)
-
-        Z.DisconnectZEN()
-
-    @thread
     @firstargonly
     def run(self):
         np.seterr(all='ignore');
@@ -385,89 +433,103 @@ class App(QMainWindow):
         FS = Z.FrameSize
         self.rectangle = Z.DrawRectangle(FS[0]/2, FS[1]/2, Size, Size, index=self.rectangle)
         while True:
-            mode = self.rdb.state.lower()
             self.startbtn.setText('Wait for experiment to start')
 
             #First wait for the experiment to start:
-            while (not Z.ExperimentRunning) & (not self.stop):
+            while (not Z.ExperimentRunning) and (not self.stop):
                 FS = Z.FrameSize
                 self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
-                time.sleep(SleepTime)
+                sleep(SleepTime)
 
             #Experiment has started:
+            self.NameSpace.mode = self.rdb.state.lower()
+            self.NameSpace.Size = Size
+            self.NameSpace.gain = gain
+            self.NameSpace.channel = self.channel
+            self.NameSpace.q = self.q
+            self.NameSpace.theta = self.theta
+            self.NameSpace.maxStep = self.maxStep
+            self.NameSpace.run = True
+            z0 = Z.GetCurrentZ
+
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
-            G = Z.PiezoPos
+
             pfilename = Z.FileName[:-3]+'pzl'
-            if not os.path.isfile(pfilename):
+            if not isfile(pfilename):
                 metafile = config.conf(pfilename)
-                metafile.FeedbackChannel = self.channel
+                metafile.mode = self.NameSpace.mode
+                metafile.FeedbackChannel = self.NameSpace.channel
                 metafile.CylLens = [self.cyllensdrp[i].currentText() for i in range(2)]
                 metafile.DLFilterSet = self.dlfs.currentText()
                 metafile.DLFilterChannel = Z.DLFilter
-                metafile.q = self.q
-                metafile.theta = self.theta
-                metafile.maxStep = self.maxStep
+                metafile.q = self.NameSpace.q
+                metafile.theta = self.NameSpace.theta
+                metafile.maxStep = self.NameSpace.maxStep
                 metafile.ROISize = Size
                 file = open(pfilename, 'a+')
                 file.write('p:\n')
 
-                if self.channel == 0:
-                    wavelength = 646
-                else:
-                    wavelength = 510
-
                 self.plot.remove_data()
 
-                if mode == 'pid':
-                    P = pid(0, G, self.maxStep, Z.TimeInterval, gain)
-
-                f = wavelength / 2 / Z.ObjectiveNA / Z.pxsize
-                fwhmlim = f * 2 * np.sqrt(2 * np.log(2))
                 SizeX, SizeY = Z.FrameSize
-                TimeInterval = Z.TimeInterval
 
                 self.startbtn.setText('Experiment started')
 
-                TimeMem = 0
-                while (Z.ExperimentRunning) & (not self.stop):
-                    Frame, Time = Z.GetFrameCenter(self.channel, Size)
-                    a = functions.fg(Frame, self.theta, f)
+                while (Z.ExperimentRunning or (not self.Queue.empty())) and (not self.stop):
+                    pxsize = Z.pxsize
 
-                    self.subqueue.append((file, TimeMem, Time, a, SizeX, SizeY, Size))
+                    #Wait until feedbackloop analysed a new frame
+                    while Z.ExperimentRunning and (not self.stop) and self.Queue.empty():
+                        sleep(SleepTime)
+                    if not self.Queue.empty():
+                        Time, a, PiezoPos, FocusPos = [], [], [], []
+                        for i in range(20):
+                            if not self.Queue.empty():
+                                Q = self.Queue.get()
+                                Time.append(Q[0])
+                                a.append(Q[1])
+                                PiezoPos.append(Q[2])
+                                FocusPos.append(Q[3])
+                            else:
+                                break
 
-                    #Update the piezo position:
-                    if mode == 'pid':
-                        F = -np.log(a[5])
-                        if np.abs(F) > 1:
-                            F = 0
-                        Pz = P(F)
-                        Z.PiezoPos = Pz
+                        for t, b, p, f in zip(Time, a, PiezoPos, FocusPos):
+                            file.write('- [{},{},{},'.format(t, p, f))
+                            file.write('{},{},{},{},{},{}]\n'.format(*b))
+                            # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
+                            # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
-                        if Pz > (G + 5):
-                            P = pid(0, G, self.maxStep, TimeInterval, gain)
-                    else:
-                        if np.abs(np.log(a[5]))>1 or a[2]<fwhmlim/4 or a[2]>fwhmlim*4:
-                            z = 0
-                        else:
-                            z = np.clip(cyl.findz(a[5], self.q), -self.maxStep, self.maxStep)
-                        Z.MovePiezoRel(-z)
+                        a = np.array(a)
+                        a[:,5][a[:,5]>1.3] = np.nan
+                        a[:,5][a[:,5]<1/1.3] = np.nan
+                        ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
+                        a[ridx,:] = np.nan
 
-                    #Wait for next frame:
-                    while ((Z.GetTime-1) == Time) and Z.ExperimentRunning and (not self.stop):
-                        time.sleep(TimeInterval / 4)
-                    if Time < TimeMem:
-                        break
+                        z = 1000*(np.array([cyl.findz(e, self.q) for e in a[:,5]]) + np.array(FocusPos) - z0)
 
-                    TimeMem = Time
+                        self.eplot.range_data(Time, a[:,5])
+                        self.iplot.range_data(Time, a[:,3])
+                        self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize)
+                        self.oplot.range_data(Time, a[:,4])
+                        self.pplot.range_data(Time, PiezoPos)
+                        self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize)
+                        self.xzplot.append_data((a[:,0] - Size / 2) * pxsize, z)
+                        self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
+                        self.plot.draw()
+
+                        X = float(a[-1,0] + (SizeX - Size) / 2 + 1)
+                        Y = float(a[-1,1] + (SizeY - Size) / 2 + 1)
+                        R = float(a[-1,2])
+                        E = float(a[-1,5])
+
+                        self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
 
                 #After the experiment:
-                while self.subqueue and not self.stop:
-                    time.sleep(SleepTime)
                 file.close()
                 Z.RemoveDrawing(self.ellipse)
             else:
-                time.sleep(SleepTime)
+                sleep(SleepTime)
             if not self.contrunchkbx.isChecked():
                 break
 
@@ -477,10 +539,14 @@ class App(QMainWindow):
         self.startbtn.setText('Prime for experiment')
         self.stopbtn.setEnabled(False)
         self.startbtn.setEnabled(True)
+        self.NameSpace.run = False
 
     def setstop(self):
         self.contrunchkbx.setChecked(False)
         self.stop = True
+        self.NameSpace.stop = True
+        self.fblprocess.join(5)
+        self.fblprocess.terminate()
 
 class RadioButtons(QWidget):
     def __init__(self, txt, init_state=0, callback=None):
@@ -538,7 +604,7 @@ class SubPlot:
         self.ax.relim()
         self.ax.autoscale_view()
 
-    def range_data(self, x, y, range=100):
+    def range_data(self, x, y, range=250):
         x = np.hstack((self.plt.get_xdata(), x))
         y = np.hstack((self.plt.get_ydata(), y))
         self.plt.set_ydata(y[x > np.nanmax(x) - range])
@@ -612,4 +678,4 @@ class AppContext(ApplicationContext):           # 1. Subclass ApplicationContext
 if __name__ == '__main__':
     appctxt = AppContext()                      # 4. Instantiate the subclass
     exit_code = appctxt.run()                   # 5. Invoke run()
-    sys.exit(exit_code)
+    exit(exit_code)

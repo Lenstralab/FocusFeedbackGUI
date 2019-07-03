@@ -1,8 +1,8 @@
 import win32com.client
 import pythoncom
 import numpy as np
-import time
-import re
+from re import search
+from time import sleep
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
@@ -89,14 +89,14 @@ class zen:
     @property
     def ObjectiveMag(self):
         try:
-            return float(re.search('\d+x', self.ZEN.GUI.Acquisition.AcquisitionMode.Objective.ByName).group()[:-1])
+            return float(search('\d+x', self.ZEN.GUI.Acquisition.AcquisitionMode.Objective.ByName).group()[:-1])
         except:
             return 0
 
     @property
     def ObjectiveNA(self):
         try:
-            return float(re.search('\d\.\d+', self.ZEN.GUI.Acquisition.AcquisitionMode.Objective.ByName).group())
+            return float(search('\d\.\d+', self.ZEN.GUI.Acquisition.AcquisitionMode.Objective.ByName).group())
         except:
             return 1
 
@@ -178,7 +178,7 @@ class zen:
         WaitTime = 0.0
         while (self.ProgressCoord() == self.LastProgressCoord) & (TimeOut > WaitTime) & self.ExperimentRunning():
             WaitTime += SleepTime
-            time.sleep(SleepTime)
+            sleep(SleepTime)
         self.LastProgressCoord = self.ProgressCoord()
 
     @property
@@ -308,4 +308,10 @@ class zen:
     def DLFilter(self):
         FS = self.VBA.Lsm5.Hardware().CpFilterSets()
         FS.Select('2C_FilterSlider')
-        return FS.FilterSetIndex()
+        return FS.FilterSetPosition-1
+
+    @DLFilter.setter
+    def DLFilter(self, position):
+        FS = self.VBA.Lsm5.Hardware().CpFilterSets()
+        FS.Select('2C_FilterSlider')
+        FS.FilterSetPosition = position+1
