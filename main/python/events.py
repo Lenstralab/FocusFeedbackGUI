@@ -85,6 +85,7 @@ def EventHandler(CLG):
             elif args[1] == '2C_FilterSlider' and self.clg.DLFilter != z.DLFilter:
                 self.clg.DLFilter = z.DLFilter
                 self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[z.DLFilter])
+                self.clg.chdlf.changeState(z.DLFilter)
             elif args[1] == 'Stage':
                 LP = z.StagePos
                 FS = z.FrameSize

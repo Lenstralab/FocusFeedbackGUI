@@ -6,6 +6,9 @@ class strct:
         self.__dict__['parent'] = parent
         self.__dict__['key'] = key
 
+    def __call__(self, *args, **kwargs):
+        return None
+
     def __contains__(self, item):
         c = self.parent.getconf()
         if not self.key in c:

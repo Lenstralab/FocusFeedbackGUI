@@ -3,7 +3,7 @@ from os.path import isfile
 from time import sleep
 from functools import partial
 from threading import Thread
-from multiprocessing import Process, Queue, Manager
+from multiprocessing import Process, Queue, Manager, freeze_support
 
 import numpy as np
 from PyQt5.QtWidgets import *
@@ -73,6 +73,10 @@ def feedbackloop(Queue, NameSpace):
                 FocusPos = Z.GetCurrentZ
                 a = functions.fg(Frame, theta, f)
 
+                #try to determine when nothing is detected by a simple filter
+                if np.abs(np.log(a[5])) > 0.25 or np.abs(np.log(a[2] / fwhmlim)) > 0.7:
+                    continue
+
                 if Time < TimeMem:
                     TTime = TimeMem + 1
                 else:
@@ -91,10 +95,7 @@ def feedbackloop(Queue, NameSpace):
                     if Pz > (G + 5):
                         P = pid(0, G, maxStep, TimeInterval, gain)
                 else:
-                    if np.abs(np.log(a[5])) > 1 or a[2] < fwhmlim / 4 or a[2] > fwhmlim * 4:
-                        z = 0
-                    else:
-                        z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
+                    z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
                     Z.MovePiezoRel(-z)
 
                 # Wait for next frame:
@@ -205,6 +206,7 @@ class App(QMainWindow):
 
         self.plot = PlotCanvas()
         self.eplot = SubPlot(self.plot, 611)
+        self.eplot.append_plot('--b')
         #self.eplot.ax.set_yscale('log')
         self.eplot.ax.set_ylabel('Ellipticity')
         self.eplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
@@ -222,6 +224,7 @@ class App(QMainWindow):
         self.oplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
         self.pplot = SubPlot(self.plot, 615)
+        self.pplot.append_plot()
         self.pplot.ax.set_xlabel('Time (frames)')
         self.pplot.ax.set_ylabel('Piezo pos (µm)')
 
@@ -301,12 +304,12 @@ class App(QMainWindow):
         self.dlfs.addItems(['488/561 & 488/640', '561/640 & empty'])
         self.dlfs.currentIndexChanged.connect(self.changeDL)
         self.grid.addWidget(self.dlfs, 3, 5)
-        self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
-        self.grid.addWidget(self.dlf, 3, 6)
 
         self.grid.addWidget(QLabel('Duolink filter:'), 4, 4)
         self.chdlf = RadioButtons(('1', '2'), init_state=self.zen.DLFilter, callback=self.changeDLF)
         self.grid.addWidget(self.chdlf, 4, 5)
+        self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+        self.grid.addWidget(self.dlf, 4, 6)
 
         self.grid.addWidget(QLabel('theta:'), 5, 4)
         self.thetafld = QLineEdit()
@@ -334,13 +337,22 @@ class App(QMainWindow):
         self.map.ax.set_xlabel('x')
         self.map.ax.set_ylabel('y')
         self.map.ax.set_aspect('equal', adjustable='datalim')
+
+        self.maprstbtn = QPushButton('Reset')
+        #self.maprstbtn.setToolTip('Prime for experiment')
+        self.maprstbtn.clicked.connect(self.resetmap)
+
         self.tab3.layout = QVBoxLayout(self.tab3)
         self.tab3.layout.addWidget(self.map.canvas)
+        self.tab3.layout.addWidget(self.maprstbtn)
         LP = self.zen.StagePos
         FS = self.zen.FrameSize
         pxsize = self.zen.pxsize
         self.map.append_data(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
         self.map.draw()
+
+    def resetmap(self):
+        self.map.remove_data()
 
     def confsave(self, f):
         if not isfile(f):
@@ -373,10 +385,12 @@ class App(QMainWindow):
                 self.maxStepfld.setText('{}'.format(self.maxStep))
 
     def changeDLF(self, val):
+        #Change the duolink filter
         if val=='1':
             self.zen.DLFilter = 0
         else:
             self.zen.DLFilter = 1
+        self.changeDL()
 
     def changeq(self, i):
         def fun(val):
@@ -400,6 +414,7 @@ class App(QMainWindow):
         self.confopen(self.conf.filename)
 
     def changeDL(self, *args):
+        #Upon change of duolink filterblock
         self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
 
     def tglcenterbox(self):
@@ -506,13 +521,16 @@ class App(QMainWindow):
                         ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
                         a[ridx,:] = np.nan
 
-                        z = 1000*(np.array([cyl.findz(e, self.q) for e in a[:,5]]) + np.array(FocusPos) - z0)
+                        zfit = np.array([-cyl.findz(e, self.q) for e in a[:, 5]])
+                        z = 1000*(zfit + np.array(FocusPos) - z0)
 
                         self.eplot.range_data(Time, a[:,5])
+                        self.eplot.range_data(Time, [1]*len(Time), N=1)
                         self.iplot.range_data(Time, a[:,3])
                         self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize)
                         self.oplot.range_data(Time, a[:,4])
                         self.pplot.range_data(Time, PiezoPos)
+                        self.pplot.range_data(Time, PiezoPos+zfit, N=1)
                         self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize)
                         self.xzplot.append_data((a[:,0] - Size / 2) * pxsize, z)
                         self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
@@ -555,13 +573,14 @@ class RadioButtons(QWidget):
         self.setLayout(layout)
         self.callback = callback
         self.state = txt[init_state]
+        self.radiobutton = []
         for i, t in enumerate(txt):
-            radiobutton = QRadioButton(t)
+            self.radiobutton.append(QRadioButton(t))
             if i == init_state:
-                radiobutton.setChecked(True)
-            radiobutton.text = t
-            radiobutton.toggled.connect(self.onClicked)
-            layout.addWidget(radiobutton, 0, i)
+                self.radiobutton[-1].setChecked(True)
+            self.radiobutton[-1].text = t
+            self.radiobutton[-1].toggled.connect(self.onClicked)
+            layout.addWidget(self.radiobutton[-1], 0, i)
 
     def onClicked(self):
         radioButton = self.sender()
@@ -569,6 +588,13 @@ class RadioButtons(QWidget):
             self.state = radioButton.text
             if not self.callback is None:
                 self.callback(radioButton.text)
+
+    def changeState(self, state):
+        for i, r in enumerate(self.radiobutton):
+            if i == state:
+                r.setChecked(True)
+            else:
+                r.setChecked(False)
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
@@ -589,40 +615,45 @@ class SubPlot:
             self.ax = canvas.fig.add_subplot(*position)
         else:
             self.ax = canvas.fig.add_subplot(position)
-        self.plt, = self.ax.plot([], linespec)
+        self.plt = []
+        self.plt.append(self.ax.plot([], linespec)[0])
         canvas.subplot.append(self)
         self.canvas = canvas
 
-    def append_data(self, x, y=None):
+    def append_plot(self, linespec='-b'):
+        self.plt.append(self.ax.plot([], linespec)[0])
+
+    def append_data(self, x, y=None, N=0):
         if y is None:
             y = x
             x = errwrap(np.nanmax, -1, self.plt.get_xdata()) + np.arange(errwrap(len, 1, x)) + 1
-        x = np.hstack((self.plt.get_xdata(), x))
-        y = np.hstack((self.plt.get_ydata(), y))
-        self.plt.set_xdata(x)
-        self.plt.set_ydata(y)
+        x = np.hstack((self.plt[N].get_xdata(), x))
+        y = np.hstack((self.plt[N].get_ydata(), y))
+        self.plt[N].set_xdata(x)
+        self.plt[N].set_ydata(y)
         self.ax.relim()
         self.ax.autoscale_view()
 
-    def range_data(self, x, y, range=250):
-        x = np.hstack((self.plt.get_xdata(), x))
-        y = np.hstack((self.plt.get_ydata(), y))
-        self.plt.set_ydata(y[x > np.nanmax(x) - range])
-        self.plt.set_xdata(x[x > np.nanmax(x) - range])
+    def range_data(self, x, y, range=250, N=0):
+        x = np.hstack((self.plt[N].get_xdata(), x))
+        y = np.hstack((self.plt[N].get_ydata(), y))
+        self.plt[N].set_ydata(y[x > np.nanmax(x) - range])
+        self.plt[N].set_xdata(x[x > np.nanmax(x) - range])
         self.ax.relim()
         self.ax.autoscale_view()
 
-    def numel_data(self, x, y, range=10000):
+    def numel_data(self, x, y, range=10000, N=0):
         x = np.hstack((self.plt.get_xdata(), x))
         y = np.hstack((self.plt.get_ydata(), y))
-        self.plt.set_ydata(y[-range:])
-        self.plt.set_xdata(x[-range:])
+        self.plt[N].set_ydata(y[-range:])
+        self.plt[N].set_xdata(x[-range:])
         self.ax.relim()
         self.ax.autoscale_view()
 
     def remove_data(self):
-        self.plt.set_xdata([])
-        self.plt.set_ydata([])
+        for plt in self.plt:
+            plt.set_xdata([])
+            plt.set_ydata([])
 
     def draw(self):
         self.canvas.draw()
@@ -636,7 +667,6 @@ class SubPatchPlot:
         canvas.subplot.append(self)
         self.canvas = canvas
         self.rects = []
-        #self.docs = []
         self.color = color
 
     def numel_data(self, x, y, dx, dy=None, range=1000):
@@ -663,9 +693,14 @@ class SubPatchPlot:
         self.ax.add_patch(rect)
         if self.rects:
             self.rects[-1].set_edgecolor(None)
-        #self.docs.append(rect)
         self.ax.relim()
         self.ax.autoscale_view()
+
+    def remove_data(self):
+        if self.rects:
+            while len(self.rects) > 0:
+                self.rects.pop(0).remove()
+        self.canvas.draw()
 
     def draw(self):
         self.canvas.draw()
@@ -676,6 +711,7 @@ class AppContext(ApplicationContext):           # 1. Subclass ApplicationContext
         return self.app.exec_()
 
 if __name__ == '__main__':
+    freeze_support()                            # to enable fbs/pyinstaller to work with multiprocessing
     appctxt = AppContext()                      # 4. Instantiate the subclass
     exit_code = appctxt.run()                   # 5. Invoke run()
     exit(exit_code)
