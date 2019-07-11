@@ -74,7 +74,7 @@ def feedbackloop(Queue, NameSpace):
                 a = functions.fg(Frame, theta, f)
 
                 #try to determine when nothing is detected by a simple filter
-                if np.abs(np.log(a[5])) > 0.25 or np.abs(np.log(a[2] / fwhmlim)) > 0.7:
+                if np.abs(a[5]-1) > 0.3 or np.abs(np.log(a[2] / fwhmlim)) > 0.7:
                     continue
 
                 if Time < TimeMem:
@@ -465,7 +465,6 @@ class App(QMainWindow):
             self.NameSpace.theta = self.theta
             self.NameSpace.maxStep = self.maxStep
             self.NameSpace.run = True
-            z0 = Z.GetCurrentZ
 
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
@@ -488,6 +487,7 @@ class App(QMainWindow):
                 self.plot.remove_data()
 
                 SizeX, SizeY = Z.FrameSize
+                z0 = None
 
                 self.startbtn.setText('Experiment started')
 
@@ -506,6 +506,8 @@ class App(QMainWindow):
                                 a.append(Q[1])
                                 PiezoPos.append(Q[2])
                                 FocusPos.append(Q[3])
+                                if z0 is None:
+                                    z0 = PiezoPos[0]+FocusPos[0]
                             else:
                                 break
 
@@ -522,7 +524,7 @@ class App(QMainWindow):
                         a[ridx,:] = np.nan
 
                         zfit = np.array([-cyl.findz(e, self.q) for e in a[:, 5]])
-                        z = 1000*(zfit + np.array(FocusPos) - z0)
+                        z = 1000*(zfit - np.array(PiezoPos) - np.array(FocusPos) + z0)
 
                         self.eplot.range_data(Time, a[:,5])
                         self.eplot.range_data(Time, [1]*len(Time), N=1)

@@ -6,6 +6,7 @@ from time import sleep
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
+lastpiezopos = None
 
 def cst(str):
     NoButtonMouseMove = 202
@@ -43,7 +44,15 @@ class zen:
         self.ConnectZEN()
         self.ProgressCoord = self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates
         self.LastProgressCoord = self.ProgressCoord()
-        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
+        #self.VBA.Lsm5.Hardware().CpFocus().ConnectHrzToFocus = False
+        self.SetAnalogMode(True)
+        self.SetExtendedRange(False)
+
+    def SetAnalogMode(self, val=True):
+        self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(val)
+
+    def SetExtendedRange(self, val=False):
+        self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetExtendedZRange(val)
 
     @property
     def ZDL(self):
@@ -257,10 +266,23 @@ class zen:
         self.ZDL = lst
         return index
 
+    def GetPiezoPos(self):
+        # in um
+        p = [self.VBA.Lsm5.Hardware().CpHrz().Position]
+        for i in range(200):
+            sleep(0.01)
+            p.append(self.VBA.Lsm5.Hardware().CpHrz().Position)
+        global lastpiezopos
+        lastpiezopos = np.mean(np.unique(p))
+        #print('piezo: {} +- {}'.format(np.mean(np.unique(p)), np.std(np.unique(p))))
+
     @property
     def PiezoPos(self):
         #in um
-        return self.VBA.Lsm5.Hardware().CpHrz().Position
+        global lastpiezopos
+        if lastpiezopos is None:
+            self.GetPiezoPos()
+        return lastpiezopos
 
     @PiezoPos.setter
     def PiezoPos(self, Z):
@@ -269,9 +291,9 @@ class zen:
             Z = 250
         elif Z < -250:
             Z = -250
-        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(1)
         self.VBA.Lsm5.Hardware().CpHrz().Position = Z
-        #self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
+        global lastpiezopos
+        lastpiezopos = Z
         return
 
     def MovePiezoRel(self, Z):

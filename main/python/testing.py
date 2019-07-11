@@ -1,25 +1,66 @@
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-import sys
+from zen import zen
+from time import time, sleep
+from matplotlib import pyplot
+import numpy
 
-class Window(QWidget):
-    def __init__(self):
-        QWidget.__init__(self)
-        layout = QGridLayout()
-        self.setLayout(layout)
+def piezotest():
+    z = zen()
+    z.SetAnalogMode(False)
+    t0 = time()
+    p = []
+    t = []
 
-        btn = QPushButton('Prime for experiment')
+    while time()-t0 < 10:
+        t.append(time()-t0)
+        p.append(z.PiezoPos)
+        sleep(0.01)
 
+    pyplot.plot(t, p)
+    pyplot.title('Digital mode')
+    print('Digital mode\n std: {} nm\n pos: {}'.format(1000*numpy.std(p), len(numpy.unique(p))))
 
+    z.SetAnalogMode(True)
+    t0 = time()
+    p = []
+    t = []
 
-        label1 = QLabel("Widget in Tab 1.")
-        label2 = QLabel("Widget in Tab 2.")
-        tabwidget = QTabWidget()
-        tabwidget.addTab(btn, "Tab 1")
-        tabwidget.addTab(label2, "Tab 2")
-        layout.addWidget(tabwidget, 0, 0)
+    while time()-t0 < 10:
+        t.append(time() - t0)
+        p.append(z.PiezoPos)
+        sleep(0.01)
 
-app = QApplication(sys.argv)
-screen = Window()
-screen.show()
-sys.exit(app.exec_())
+    pyplot.figure()
+    pyplot.plot(t, p)
+    pyplot.title('Analog mode')
+    print('Analog mode\n std: {} nm\n pos: {}'.format(1000*numpy.std(p), len(numpy.unique(p))))
+
+def piezosteptest():
+    z = zen()
+    z.SetAnalogMode(False)
+    t0 = time()
+    p = []
+    t = []
+
+    while time()-t0 < 10:
+        t.append(time()-t0)
+        p.append(z.PiezoPos)
+        sleep(0.01)
+
+    pyplot.plot(t, p)
+    pyplot.title('Digital mode')
+    print('Digital mode\n std: {} nm\n pos: {}'.format(1000*numpy.std(p), len(numpy.unique(p))))
+
+    z.SetAnalogMode(True)
+    t0 = time()
+    p = []
+    t = []
+
+    while time()-t0 < 10:
+        t.append(time() - t0)
+        p.append(z.PiezoPos)
+        sleep(0.01)
+
+    pyplot.figure()
+    pyplot.plot(t, p)
+    pyplot.title('Analog mode')
+    print('Analog mode\n std: {} nm\n pos: {}'.format(1000*numpy.std(p), len(numpy.unique(p))))
