@@ -1,6 +1,8 @@
 from sys import exit
-from os.path import isfile
-from time import sleep
+from os.path import isfile, splitext
+from os import remove
+from shutil import copyfile
+from time import sleep, time
 from functools import partial
 from threading import Thread
 from multiprocessing import Process, Queue, Manager, freeze_support
@@ -44,6 +46,7 @@ def feedbackloop(Queue, NameSpace):
     # this is run in a separate process
     np.seterr(all='ignore');
     Z = zen()
+    _ = Z.PiezoPos
     while not NameSpace.stop:
         if NameSpace.run:
             mode = NameSpace.mode
@@ -68,35 +71,38 @@ def feedbackloop(Queue, NameSpace):
                 P = pid(0, G, maxStep, TimeInterval, gain)
 
             while Z.ExperimentRunning and (not NameSpace.stop):
+                STime = time()
                 Frame, Time = Z.GetFrameCenter(channel, Size)
                 PiezoPos = Z.PiezoPos
                 FocusPos = Z.GetCurrentZ
                 a = functions.fg(Frame, theta, f)
-
-                #try to determine when nothing is detected by a simple filter
-                if np.abs(a[5]-1) > 0.3 or np.abs(np.log(a[2] / fwhmlim)) > 0.7:
-                    continue
 
                 if Time < TimeMem:
                     TTime = TimeMem + 1
                 else:
                     TTime = Time
 
-                Queue.put((TTime, a, PiezoPos, FocusPos))
+                #try to determine when something is detected by using a simple filter
+                if not any(np.isnan(a)) and a[7] > 0.3 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
+                    Queue.put((TTime, a, PiezoPos, FocusPos ,STime))
 
-                # Update the piezo position:
-                if mode == 'pid':
-                    F = -np.log(a[5])
-                    if np.abs(F) > 1:
-                        F = 0
-                    Pz = P(F)
-                    Z.PiezoPos = Pz
+                    # Update the piezo position:
+                    if mode == 'pid':
+                        F = -np.log(a[5])
+                        if np.abs(F) > 1:
+                            F = 0
+                        Pz = P(F)
+                        Z.PiezoPos = Pz
 
-                    if Pz > (G + 5):
-                        P = pid(0, G, maxStep, TimeInterval, gain)
+                        if Pz > (G + 5):
+                            P = pid(0, G, maxStep, TimeInterval, gain)
+                    else:
+                        z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
+                        print(TTime, z)
+                        if not np.isnan(z):
+                            Z.MovePiezoRel(-z)
                 else:
-                    z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
-                    Z.MovePiezoRel(-z)
+                    Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
 
                 # Wait for next frame:
                 while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop):
@@ -439,7 +445,7 @@ class App(QMainWindow):
 
         Size = 32 #Size of the ROI in which the psf is fitted
         SleepTime = 0.02
-        gain = -5e-3
+        gain = 5e-3
 
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
@@ -469,8 +475,14 @@ class App(QMainWindow):
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
 
-            pfilename = Z.FileName[:-3]+'pzl'
-            if not isfile(pfilename):
+            cfilename = Z.FileName
+            cfexists = cfilename!='' #whether ZEN already made the czi file (streaming)
+            if cfexists:
+                pfilename = splitext(cfilename)[0]+'.pzl'
+            else:
+                pfilename = 'd:\\tmp\\tmp.pzl'
+                remove(pfilename)
+            if not cfexists or (cfexists and not isfile(pfilename)):
                 metafile = config.conf(pfilename)
                 metafile.mode = self.NameSpace.mode
                 metafile.FeedbackChannel = self.NameSpace.channel
@@ -481,73 +493,82 @@ class App(QMainWindow):
                 metafile.theta = self.NameSpace.theta
                 metafile.maxStep = self.NameSpace.maxStep
                 metafile.ROISize = Size
-                file = open(pfilename, 'a+')
-                file.write('p:\n')
+                with open(pfilename, 'a+') as file:
+                    file.write('p:\n')
 
-                self.plot.remove_data()
+                    self.plot.remove_data()
 
-                SizeX, SizeY = Z.FrameSize
-                z0 = None
+                    SizeX, SizeY = Z.FrameSize
+                    z0 = None
 
-                self.startbtn.setText('Experiment started')
+                    self.startbtn.setText('Experiment started')
 
-                while (Z.ExperimentRunning or (not self.Queue.empty())) and (not self.stop):
-                    pxsize = Z.pxsize
+                    while (Z.ExperimentRunning or (not self.Queue.empty())) and (not self.stop):
+                        pxsize = Z.pxsize
 
-                    #Wait until feedbackloop analysed a new frame
-                    while Z.ExperimentRunning and (not self.stop) and self.Queue.empty():
-                        sleep(SleepTime)
-                    if not self.Queue.empty():
-                        Time, a, PiezoPos, FocusPos = [], [], [], []
-                        for i in range(20):
-                            if not self.Queue.empty():
-                                Q = self.Queue.get()
-                                Time.append(Q[0])
-                                a.append(Q[1])
-                                PiezoPos.append(Q[2])
-                                FocusPos.append(Q[3])
-                                if z0 is None:
-                                    z0 = PiezoPos[0]+FocusPos[0]
-                            else:
-                                break
+                        #Wait until feedbackloop analysed a new frame
+                        while Z.ExperimentRunning and (not self.stop) and self.Queue.empty():
+                            sleep(SleepTime)
+                        if not self.Queue.empty():
+                            Time, a, PiezoPos, FocusPos, STime = [], [], [], [], []
+                            for i in range(20):
+                                if not self.Queue.empty():
+                                    Q = self.Queue.get()
+                                    Time.append(Q[0])
+                                    a.append(Q[1])
+                                    PiezoPos.append(Q[2])
+                                    FocusPos.append(Q[3])
+                                    STime.append(Q[4])
+                                    if z0 is None:
+                                        z0 = PiezoPos[0]+FocusPos[0]
+                                else:
+                                    break
 
-                        for t, b, p, f in zip(Time, a, PiezoPos, FocusPos):
-                            file.write('- [{},{},{},'.format(t, p, f))
-                            file.write('{},{},{},{},{},{}]\n'.format(*b))
-                            # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
-                            # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
+                            for t, b, p, f, s in zip(Time, a, PiezoPos, FocusPos, STime):
+                                file.write('- [{},{},{},'.format(t, p, f))
+                                file.write('{},{},{},{},{},{},'.format(*b))
+                                file.write('{}]\n'.format(s))
+                                # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
+                                # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
-                        a = np.array(a)
-                        a[:,5][a[:,5]>1.3] = np.nan
-                        a[:,5][a[:,5]<1/1.3] = np.nan
-                        ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
-                        a[ridx,:] = np.nan
+                            a = np.array(a)
+                            a[:,5][a[:,5]>1.3] = np.nan
+                            a[:,5][a[:,5]<0.7] = np.nan
+                            ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
+                            a[ridx,:] = np.nan
 
-                        zfit = np.array([-cyl.findz(e, self.q) for e in a[:, 5]])
-                        z = 1000*(zfit - np.array(PiezoPos) - np.array(FocusPos) + z0)
+                            zfit = np.array([-cyl.findz(e, self.q) for e in a[:, 5]])
+                            z = 1000*(zfit - np.array(PiezoPos) - np.array(FocusPos) + z0)
 
-                        self.eplot.range_data(Time, a[:,5])
-                        self.eplot.range_data(Time, [1]*len(Time), N=1)
-                        self.iplot.range_data(Time, a[:,3])
-                        self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize)
-                        self.oplot.range_data(Time, a[:,4])
-                        self.pplot.range_data(Time, PiezoPos)
-                        self.pplot.range_data(Time, PiezoPos+zfit, N=1)
-                        self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize)
-                        self.xzplot.append_data((a[:,0] - Size / 2) * pxsize, z)
-                        self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
-                        self.plot.draw()
+                            self.eplot.range_data(Time, a[:,5])
+                            self.eplot.range_data(Time, [1]*len(Time), N=1)
+                            self.iplot.range_data(Time, a[:,3])
+                            self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize)
+                            self.oplot.range_data(Time, a[:,4])
+                            self.pplot.range_data(Time, PiezoPos)
+                            self.pplot.range_data(Time, PiezoPos+zfit, N=1)
+                            self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize)
+                            self.xzplot.append_data((a[:,0] - Size / 2) * pxsize, z)
+                            self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
+                            self.plot.draw()
 
-                        X = float(a[-1,0] + (SizeX - Size) / 2 + 1)
-                        Y = float(a[-1,1] + (SizeY - Size) / 2 + 1)
-                        R = float(a[-1,2])
-                        E = float(a[-1,5])
+                            X = float(a[-1,0] + (SizeX - Size) / 2 + 1)
+                            Y = float(a[-1,1] + (SizeY - Size) / 2 + 1)
+                            R = float(a[-1,2])
+                            E = float(a[-1,5])
 
-                        self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
+                            self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
 
                 #After the experiment:
-                file.close()
                 Z.RemoveDrawing(self.ellipse)
+                if not cfexists:
+                    for i in range(5):
+                        cfilename = functions.last_czi_file()
+                        npfilename = splitext(cfilename)[0] + '.pzl'
+                        if cfilename and not isfile(npfilename):
+                            break
+                        sleep(0.25)
+                    copyfile(pfilename, npfilename)
             else:
                 sleep(SleepTime)
             if not self.contrunchkbx.isChecked():

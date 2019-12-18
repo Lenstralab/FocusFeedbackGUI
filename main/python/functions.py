@@ -3,6 +3,10 @@ import scipy.optimize
 import scipy.special
 import scipy.ndimage
 from numba import jit
+import os, re
+from time import time
+from inspect import stack
+from numbers import Number
 
 @jit(nopython=True, nogil=True)
 def meshgrid(x, y):
@@ -68,25 +72,23 @@ def fitgauss(im, theta=0):
         im:    2D array with image
         theta: Fixed theta to use
         q:  [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
-        dq: errors (std) on q
     """
     xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)))
     r = 5
     jm = crop(im, (xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))
-    p = fitgaussint(jm)
+    p = fitgaussint(jm, theta)
     if (p[2] > 8) | (p[3] < 0.1):
-        q = np.ones(7)
-        return q
+        return np.full(7, np.nan), np.nan
     p[0:2] += (xy - r)
     s = 2 * np.ceil(p[2])
     jm = crop(im, (p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))
     S = np.shape(jm)
     p[0:2] -= (xy - s)
     xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
-    p = np.append(p, 1)
     g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv)) ** 2)
 
     r = scipy.optimize.minimize(g, p, options={'disp': False, 'maxiter': 1e5})
+    r2 = 1 - (r.fun/np.sum((im-np.mean(im))**2))
     q = r.x
 
     q[2] = np.abs(q[2])
@@ -94,7 +96,7 @@ def fitgauss(im, theta=0):
     q = np.append(q, theta)
     q[5] = np.abs(q[5])
 
-    return q
+    return q, r2
 
 def fg(im, Theta, f):
     if np.ndim(im) == 1:
@@ -104,23 +106,32 @@ def fg(im, Theta, f):
         im = np.array(im)
     im -= scipy.ndimage.gaussian_filter(im, f * 1.1)
     im = scipy.ndimage.gaussian_filter(im, f / 1.1)
-    return fitgauss(im, Theta)
+    q, r2 = fitgauss(im, Theta)
+    return np.hstack((q, r2))
 
-def fitgaussint(im):
+def fitgaussint(im, theta):
     """ Initial guess for gaussfit
         im: 2D array with image
-        q:  [x,y,fwhm,area,offset]
+        q:  [x,y,fwhm,area,offset,ellipticity,angle]
     """
     S = np.shape(im)
-    q = np.full(5, np.nan)
-    q[:2] = np.unravel_index(np.argmax(im.T),(S[0],S[1]))
-    q[4] = np.min(im)
-    q[3] = np.sum(im-q[4])
-    f = np.mean((np.max(im),q[4]))
-    jm = np.zeros(S)
-    jm[im<f] = 0
-    jm[im>f] = 1
-    q[2] = np.sqrt(np.sum(jm))
+    q = np.full(6, 0).astype('float')
+
+    x, y = np.meshgrid(range(S[0]), range(S[1]))
+    q[4] = np.nanmin(im)
+    jm = im-q[4]
+    q[3] = np.nansum(jm)
+    q[0] = np.nansum(x*jm)/q[3]
+    q[1] = np.nansum(y*jm)/q[3]
+    cos, sin = np.cos(theta), np.sin(theta)
+    x, y = cos*(x-q[0])-(y-q[1])*sin, cos*(y-q[1])+(x-q[0])*sin
+
+    s2 = np.nansum((im-q[4])**2)
+    sx = np.sqrt(np.nansum((x*jm)**2)/s2)
+    sy = np.sqrt(np.nansum((y*jm)**2)/s2)
+
+    q[2] = np.sqrt(sx*sy)*4*np.sqrt(np.log(2))
+    q[5] = np.sqrt(sx/sy)
     return q
 
 def crop(im, x, y, m=np.nan):
@@ -138,3 +149,140 @@ def crop(im, x, y, m=np.nan):
     jm = im[r[0,0]:r[0,1],r[1,0]:r[1,1]]
     jm =   np.concatenate((np.full((r[0,0]-R[0,0],np.shape(jm)[1]),m),jm,np.full((R[0,1]-r[0,1],np.shape(jm)[1]),m)),0)
     return np.concatenate((np.full((np.shape(jm)[0],r[1,0]-R[1,0]),m),jm,np.full((np.shape(jm)[0],R[1,1]-r[1,1]),m)),1)
+
+def last_czi_file(folder='d:\data', t=60):
+    """ finds last created czi file in folder created not more than t seconds ago
+        wp@tl20191218
+    """
+    fname = ffind('.*\.czi$', folder, 5)
+    tm = [os.path.getctime(f) for f in fname]
+    t_newest = np.max(tm)
+    if time()-t_newest>t:
+        return ''
+    else:
+        return fname[np.argmax(tm)]
+
+def ffind(expr, *args, **kwargs):
+    """
+    --------------------------------------------------------------------------
+    % usage: fnames=ffind(expr,folder,rec,'once','directory')
+    %
+    % finds files that match regular expression 'expr' in 'folder' or
+    % subdirectories
+    %
+    % inputs:
+    %   folder: startfolder path, (optional, default: current working dirextory)
+    %   expr:   string: regular expression to match
+    %               example: to search for doc files do: '\.doc$'
+    %           list or tuple: ffind will look for the folder in expr[0] starting
+    %           from 'folder', 'rec' deep, then from that folder it will continue
+    %           to navigate down to expr{end-1} and find the file (or folder) in
+    %           expr[-1]
+    %               example: ffind(('M_FvL','','^.*\.m'),'/home')
+    %   rec:    recursive (optional, default: 3), also search in
+    %           subdirectories rec deep (keep it low to avoid eternal loops)
+    %   once:   optional flag, if enabled ffind will only output the first
+    %           match it encounters as a string, use only if the existence of
+    %           only one match is certain
+    %   directory: optional flag: ffind only finds directories instead of files
+    %
+    % output:
+    %   fnames: list containing all matches
+    %
+    % date: Aug 2014
+    % author: wp
+    % version: <01.00> (wp) <20140812.0000>
+    %          <02.00>      <20180214.0000> Add once and directory flags, rec
+    %                                       now signifies the folder-depth.
+    %          <03.00>      <20190326.0000> Python implementation.
+    %--------------------------------------------------------------------------
+    """
+
+    # argument parsing
+    for i in args:
+        if isinstance(i, Number):
+            rec = i
+        elif i == 'once':
+            once = True
+        elif i == 'directory':
+            directory = True
+        elif isinstance(i, str):
+            folder = i
+
+    for key, value in kwargs.items():
+        if key is 'once':
+            once = value
+        elif key is 'directory':
+            directory = value
+
+    if not 'rec' in vars().keys():
+        rec = 3
+    if not 'once' in vars().keys():
+        once = False
+    if not 'directory' in vars().keys():
+        directory = False
+    if not 'folder' in vars().keys():
+        folder = os.getcwd()
+
+    if not folder[-1] == os.sep:
+        folder = folder + os.sep
+
+    # print('rec: {}, folder: {}'.format(rec, folder))
+
+    if isinstance(expr, tuple):
+        expr = list(expr)
+
+    # search for the path in expr if needed
+    if isinstance(expr, (list, tuple)):
+        if len(expr) > 1:
+            folder = ffind(expr[0], folder, rec, 'directory')
+            for e in expr[1:-1]:
+                folder_tmp = []
+                for f in folder:
+                    folder_tmp.extend(ffind(e, f, 0, 'directory'))
+                folder = folder_tmp
+            fnames = []
+            for f in folder:
+                fnames.extend(ffind(expr[-1], f, 0, once=once, directory=directory))
+                if len(fnames) and once:
+                    fnames = fnames[0]
+                    break
+            if not len(fnames) and once:
+                fnames = ''
+            return fnames
+        expr = expr[0]
+
+    # an empty expression should match everything
+    if not isinstance(expr, re.Pattern):
+        if not len(expr) > 0:
+            expr = '.*'
+        expr = re.compile(expr, re.IGNORECASE)
+
+    lst = os.listdir(folder)
+
+    fnames = []
+    dirnames = []
+    for l in lst:
+        if re.search('^\.', l) != None:  # don't search in/for hidden things
+            continue
+        if (os.path.isdir(folder + l) == directory) & (re.search(expr, l) != None):
+            fnames.append(folder + l)
+            if once:
+                break
+        if rec and os.path.isdir(
+                folder + l):  # list all folders, but don't go in them yet, faster when the target is in the current folder and once=True
+            dirnames.append(folder + l)
+    if not once or not len(fnames):  # recursively go through all subfolders
+        for d in dirnames:
+            fnames.extend(ffind(expr, d, rec - 1, once=once, directory=directory))
+            if once and len(fnames):
+                break
+
+    if once and stack()[1][3] != 'ffind':
+        if len(fnames):
+            fnames = fnames[0]
+        else:
+            fnames = ''
+    else:
+        fnames.sort()
+    return fnames
