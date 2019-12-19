@@ -3,6 +3,7 @@ import pythoncom
 import numpy as np
 from re import search
 from time import sleep
+import inspect
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
@@ -47,6 +48,13 @@ class zen:
         #self.VBA.Lsm5.Hardware().CpFocus().ConnectHrzToFocus = False
         self.SetAnalogMode(True)
         self.SetExtendedRange(False)
+
+        curf = inspect.currentframe()
+        calf = inspect.getouterframes(curf, 2)
+
+        f = open('D:\CyllensGUI\z.txt', 'a')
+        f.write('caller name: {}\n'.format(calf[1][3]))
+        f.close()
 
     def SetAnalogMode(self, val=True):
         self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(val)
@@ -178,6 +186,26 @@ class zen:
             Time -= 1
         return np.reshape(ScanDoc.GetSubregion(Channel, x0, y0, 0, Time, 1, 1, 1, 1, Size, Size, 1, 1, 2)[0],(Size,Size)), Time
 
+    def GetFrame(self, Channel=1, X=None, Y=None, Sx=32, Sy=32):
+        Sx = 2*int((Sx+1)/2) #Ensure evenness
+        Sy = 2*int((Sy+1)/2)
+        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        xMax = ScanDoc.GetDimensionX()
+        yMax = ScanDoc.GetDimensionY()
+        if X is None:
+            X = int((xMax - Sx) / 2)
+        else:
+            X -= int(Sx/2)
+        if Y is None:
+            Y = int((yMax - Sy) / 2)
+        else:
+            Y -= int(Sy/2)
+
+        Time = self.GetTime
+        if Time > 0:
+            Time -= 1
+        return np.reshape(ScanDoc.GetSubregion(Channel, X, Y, 0, Time, 1, 1, 1, 1, Sx, Sy, 1, 1, 2)[0], (Sx, Sy)), Time
+
     @property
     def GetTime(self):
         return self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates()[2]
@@ -232,7 +260,7 @@ class zen:
         Overlay.LineWidth = LineWidth
         Overlay.Color = Color #Green
 
-        Overlay.AddDrawingElement(4,2,(X-Sx/2,X+Sx/2),(Y-Sy/2,Y+Sy/2))
+        Overlay.AddDrawingElement(4,2,(float(X-Sx/2),float(X+Sx/2)),(float(Y-Sy/2),float(Y+Sy/2)))
         return index
 
     def RemoveDrawings(self):

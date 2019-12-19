@@ -3,6 +3,7 @@ from os.path import isfile, splitext
 from os import remove
 from shutil import copyfile
 from time import sleep, time
+from datetime import datetime
 from functools import partial
 from threading import Thread
 from multiprocessing import Process, Queue, Manager, freeze_support
@@ -16,8 +17,7 @@ from matplotlib import rcParams, pyplot
 rcParams.update({'figure.autolayout': True})
 
 import cylinderlens as cyl
-import functions
-import config
+import functions, config
 from events import events
 from pid import pid
 from zen import zen
@@ -51,6 +51,7 @@ def feedbackloop(Queue, NameSpace):
         if NameSpace.run:
             mode = NameSpace.mode
             Size = NameSpace.Size
+            Pos = NameSpace.Pos
             gain = NameSpace.gain
             channel = NameSpace.channel
             q = NameSpace.q
@@ -58,6 +59,7 @@ def feedbackloop(Queue, NameSpace):
             maxStep = NameSpace.maxStep
             TimeInterval = Z.TimeInterval
             G = Z.PiezoPos
+            FS = Z.FrameSize
             TimeMem = 0
 
             if channel == 0:
@@ -72,7 +74,8 @@ def feedbackloop(Queue, NameSpace):
 
             while Z.ExperimentRunning and (not NameSpace.stop):
                 STime = time()
-                Frame, Time = Z.GetFrameCenter(channel, Size)
+                Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
+                #Frame, Time = Z.GetFrame(channel, Xs=(Size, Size))
                 PiezoPos = Z.PiezoPos
                 FocusPos = Z.GetCurrentZ
                 a = functions.fg(Frame, theta, f)
@@ -158,6 +161,7 @@ class App(QMainWindow):
         self.NameSpace.run = False
         self.fblprocess = Process(target=feedbackloop, args=(self.Queue, self.NameSpace))
         self.fblprocess.start()
+        self.running = False
 
         events(self)
 
@@ -269,19 +273,19 @@ class App(QMainWindow):
         self.grid.setColumnStretch(6, 3)
 
         labelnames = ('e0:', 'z0:', 'c:', 'Ax:', 'Bx:', 'dx:', 'Ay:', 'By:', 'dy:')
-        self.lbl = list()
+        self.lbl = []
         for i, l in enumerate(labelnames):
             self.lbl.append(QLabel(l))
             self.grid.addWidget(self.lbl[-1], i, 1)
 
-        self.edt = list()
+        self.edt = []
         for i in range(9):
             self.edt.append(QLineEdit())
             self.edt[-1].textChanged.connect(self.changeq(i))
             self.grid.addWidget(self.edt[-1], i, 2)
 
         unitnames = ('', 'um', 'um', 'um2', 'um3', 'um', 'um2', 'um3', 'um')
-        self.unt = list()
+        self.unt = []
         for i, l in enumerate(unitnames):
             self.unt.append(QLabel(l))
             self.grid.addWidget(self.unt[-1], i, 3)
@@ -432,10 +436,11 @@ class App(QMainWindow):
 
     @firstargonly
     def closeEvent(self):
-        self.setstop()
+        self.quit()
 
     def stayprimed(self):
-        if self.contrunchkbx.isChecked():
+        if self.contrunchkbx.isChecked() and not self.running:
+            self.running = True
             self.run()
 
     @thread
@@ -443,28 +448,32 @@ class App(QMainWindow):
     def run(self):
         np.seterr(all='ignore');
 
-        Size = 32 #Size of the ROI in which the psf is fitted
+        Size = self.conf.ROISize #Size of the ROI in which the psf is fitted
+        Pos = self.conf.ROIPos
         SleepTime = 0.02
-        gain = 5e-3
+        gain = 5e-3 #gain for PID mode
 
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
         Z = zen()  #cannot move com-objects from one thread to another :(
         Z.RemoveDrawings()
         FS = Z.FrameSize
-        self.rectangle = Z.DrawRectangle(FS[0]/2, FS[1]/2, Size, Size, index=self.rectangle)
+        self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+        #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
         while True:
             self.startbtn.setText('Wait for experiment to start')
 
             #First wait for the experiment to start:
             while (not Z.ExperimentRunning) and (not self.stop):
                 FS = Z.FrameSize
-                self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
+                self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+                #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
                 sleep(SleepTime)
 
             #Experiment has started:
             self.NameSpace.mode = self.rdb.state.lower()
             self.NameSpace.Size = Size
+            self.NameSpace.Pos = Pos
             self.NameSpace.gain = gain
             self.NameSpace.channel = self.channel
             self.NameSpace.q = self.q
@@ -473,15 +482,17 @@ class App(QMainWindow):
             self.NameSpace.run = True
 
             FS = Z.FrameSize
-            self.rectangle = Z.DrawRectangle(FS[0] / 2, FS[1] / 2, Size, Size, index=self.rectangle)
+            self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+            #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
 
             cfilename = Z.FileName
-            cfexists = cfilename!='' #whether ZEN already made the czi file (streaming)
+            cfexists = isfile(cfilename) #whether ZEN already made the czi file (streaming)
             if cfexists:
                 pfilename = splitext(cfilename)[0]+'.pzl'
             else:
-                pfilename = 'd:\\tmp\\tmp.pzl'
-                remove(pfilename)
+                pfilename = splitext(self.conf.tmpPzlFile)[0]+datetime.now().strftime('_%Y%m%d-%H%M%S.pzl')
+                if isfile(pfilename):
+                    remove(pfilename)
             if not cfexists or (cfexists and not isfile(pfilename)):
                 metafile = config.conf(pfilename)
                 metafile.mode = self.NameSpace.mode
@@ -493,6 +504,7 @@ class App(QMainWindow):
                 metafile.theta = self.NameSpace.theta
                 metafile.maxStep = self.NameSpace.maxStep
                 metafile.ROISize = Size
+                metafile.ROIPos = Pos
                 with open(pfilename, 'a+') as file:
                     file.write('p:\n')
 
@@ -552,8 +564,8 @@ class App(QMainWindow):
                             self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
                             self.plot.draw()
 
-                            X = float(a[-1,0] + (SizeX - Size) / 2 + 1)
-                            Y = float(a[-1,1] + (SizeY - Size) / 2 + 1)
+                            X = float(a[-1,0] + (SizeX - Size) / 2 + Pos[0])
+                            Y = float(a[-1,1] + (SizeY - Size) / 2 + Pos[1])
                             R = float(a[-1,2])
                             E = float(a[-1,5])
 
@@ -563,12 +575,12 @@ class App(QMainWindow):
                 Z.RemoveDrawing(self.ellipse)
                 if not cfexists:
                     for i in range(5):
-                        cfilename = functions.last_czi_file()
+                        cfilename = functions.last_czi_file(self.conf.dataDir)
                         npfilename = splitext(cfilename)[0] + '.pzl'
                         if cfilename and not isfile(npfilename):
+                            copyfile(pfilename, npfilename)
                             break
                         sleep(0.25)
-                    copyfile(pfilename, npfilename)
             else:
                 sleep(SleepTime)
             if not self.contrunchkbx.isChecked():
@@ -581,8 +593,13 @@ class App(QMainWindow):
         self.stopbtn.setEnabled(False)
         self.startbtn.setEnabled(True)
         self.NameSpace.run = False
+        self.running = False
 
     def setstop(self):
+        self.contrunchkbx.setChecked(False)
+        self.stop = True
+
+    def quit(self):
         self.contrunchkbx.setChecked(False)
         self.stop = True
         self.NameSpace.stop = True

@@ -1,5 +1,6 @@
 import yaml
 import os
+from functions import ffind
 
 class strct:
     def __init__(self, parent, key):
@@ -57,7 +58,9 @@ class strct:
         self.parent.setconf(c)
 
 class conf:
-    def __init__(self, filename='D:\CylLensGUI\src\main\python\conf.yml'):
+    def __init__(self, filename=None):
+        if filename is None:
+            filename = ffind('^conf\.yml$', 'once')
         self.__dict__['_filename'] = filename
 
     def __contains__(self, item):

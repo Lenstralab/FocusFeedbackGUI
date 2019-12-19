@@ -150,6 +150,23 @@ def crop(im, x, y, m=np.nan):
     jm =   np.concatenate((np.full((r[0,0]-R[0,0],np.shape(jm)[1]),m),jm,np.full((R[0,1]-r[0,1],np.shape(jm)[1]),m)),0)
     return np.concatenate((np.full((np.shape(jm)[0],r[1,0]-R[1,0]),m),jm,np.full((np.shape(jm)[0],R[1,1]-r[1,1]),m)),1)
 
+def cliprect(FS, X, Y, Sx, Sy):
+    if Sx%2: Sx += 1
+    if Sy%2: Sy += 1
+    l = np.clip(X+FS[0]/2-Sx/2+1, 1, FS[0]-1)
+    r = np.clip(X+FS[0]/2+Sx/2, 2, FS[0])
+    b = np.clip(Y+FS[1]/2-Sy/2+1, 1, FS[1]-1)
+    t = np.clip(Y+FS[1]/2+Sy/2, 2, FS[1])
+    Sx, Sy = r-l+1, t-b+1
+    if Sx%2 and Sy%2:
+        return cliprect(FS, X, Y, Sx-2, Sy-2)
+    elif Sx%2:
+        return cliprect(FS, X, Y, Sx-2, Sy)
+    elif Sy%2:
+        return cliprect(FS, X, Y, Sx, Sy-2)
+    else:
+        return float((r+l-1)/2), float((t+b-1)/2), float(Sx), float(Sy)
+
 def last_czi_file(folder='d:\data', t=60):
     """ finds last created czi file in folder created not more than t seconds ago
         wp@tl20191218

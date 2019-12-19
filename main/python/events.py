@@ -54,7 +54,8 @@ def EventHandler(CLG):
                 X = z.MousePosition
                 FS = z.FrameSize
                 pxsize = z.pxsize
-                d = [(FS[i]/2 - X[i]) * pxsize/1000 for i in range(2)]
+                Pos = self.clg.conf.ROIPos
+                d = [(FS[i]/2 - X[i] + Pos[i]) * pxsize/1000 for i in range(2)]
                 d[1] *= -1
                 z.MoveStageRel(*d)
             z.DisconnectZEN()
