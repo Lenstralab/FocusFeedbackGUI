@@ -32,11 +32,6 @@ def errwrap(fun,default,*args):
     except:
         return default
 
-def thread(fun):
-    """ decorator to run function in a separate thread to keep the gui responsive
-    """
-    return lambda *args: Thread(target=fun, args=args).start()
-
 def firstargonly(fun):
     """ decorator that only passes the first argument to a function
     """
@@ -47,7 +42,7 @@ def feedbackloop(Queue, NameSpace):
     np.seterr(all='ignore');
     Z = zen()
     _ = Z.PiezoPos
-    while not NameSpace.stop:
+    while not NameSpace.quit:
         if NameSpace.run:
             mode = NameSpace.mode
             Size = NameSpace.Size
@@ -57,6 +52,7 @@ def feedbackloop(Queue, NameSpace):
             q = NameSpace.q
             theta = NameSpace.theta
             maxStep = NameSpace.maxStep
+            fastMode = NameSpace.fastMode
             TimeInterval = Z.TimeInterval
             G = Z.PiezoPos
             FS = Z.FrameSize
@@ -78,7 +74,7 @@ def feedbackloop(Queue, NameSpace):
                 #Frame, Time = Z.GetFrame(channel, Xs=(Size, Size))
                 PiezoPos = Z.PiezoPos
                 FocusPos = Z.GetCurrentZ
-                a = functions.fg(Frame, theta, f)
+                a = functions.fg(Frame, theta, f, fastMode)
 
                 if Time < TimeMem:
                     TTime = TimeMem + 1
@@ -87,7 +83,7 @@ def feedbackloop(Queue, NameSpace):
 
                 #try to determine when something is detected by using a simple filter
                 if not any(np.isnan(a)) and a[7] > 0.3 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
-                    Queue.put((TTime, a, PiezoPos, FocusPos ,STime))
+                    Queue.put((TTime, a[:8], PiezoPos, FocusPos ,STime))
 
                     # Update the piezo position:
                     if mode == 'pid':
@@ -101,14 +97,19 @@ def feedbackloop(Queue, NameSpace):
                             P = pid(0, G, maxStep, TimeInterval, gain)
                     else:
                         z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
-                        print(TTime, z)
+                        #print(TTime, z)
                         if not np.isnan(z):
                             Z.MovePiezoRel(-z)
+                    print('Good:'+(' {:.2f}'*8).format(*a))
                 else:
                     Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
+                    if len(a)==8:
+                        print('Bad: '+(' {:.2f}'*8).format(*a))
+                    else:
+                        print('Len: ', len(a))
 
                 # Wait for next frame:
-                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop):
+                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
                     sleep(TimeInterval / 4)
                 if Time < TimeMem:
                     break
@@ -122,16 +123,14 @@ def feedbackloop(Queue, NameSpace):
 class App(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.left = 1500
-        self.top = 50
         self.title = 'Cylinder lens feedback GUI'
         self.width = 640
         self.height = 1024
-        self.stop = False
+        self.stop = False # Stop (waiting for) experiment
+        self.quit = False # Quit program
         self.conf = config.conf()
 
         self.zen = zen()
-        self.curzentitle = self.zen.Title
 
         self.q = []
         self.maxStep = 1
@@ -143,7 +142,7 @@ class App(QMainWindow):
         self.DLFilter = self.zen.DLFilter
 
         self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
+        self.setMinimumSize(self.width, self.height)
         self.central_widget = QWidget()
         self.layout = QGridLayout()
         self.central_widget.setLayout(self.layout)
@@ -157,11 +156,12 @@ class App(QMainWindow):
 
         self.Queue = Queue()
         self.NameSpace = Manager().Namespace()
+        self.NameSpace.quit = False
         self.NameSpace.stop = False
         self.NameSpace.run = False
         self.fblprocess = Process(target=feedbackloop, args=(self.Queue, self.NameSpace))
         self.fblprocess.start()
-        self.running = False
+        self.guithread = None
 
         events(self)
 
@@ -205,7 +205,7 @@ class App(QMainWindow):
 
         self.startbtn = QPushButton('Prime for experiment')
         self.startbtn.setToolTip('Prime for experiment')
-        self.startbtn.clicked.connect(self.run)
+        self.startbtn.clicked.connect(self.prime)
 
         self.stopbtn = QPushButton('Stop')
         self.stopbtn.setToolTip('Stop')
@@ -436,22 +436,27 @@ class App(QMainWindow):
 
     @firstargonly
     def closeEvent(self):
-        self.quit()
+        self.setquit()
+
+    def prime(self):
+        if self.guithread is None or not self.guithread.is_alive():
+            self.guithread = Thread(target=self.run)
+            self.guithread.start()
 
     def stayprimed(self):
-        if self.contrunchkbx.isChecked() and not self.running:
-            self.running = True
-            self.run()
+        if self.contrunchkbx.isChecked():
+            self.prime()
 
-    @thread
     @firstargonly
     def run(self):
         np.seterr(all='ignore');
+        sleepTime = 0.02 #GUI update interval
 
         Size = self.conf.ROISize #Size of the ROI in which the psf is fitted
         Pos = self.conf.ROIPos
-        SleepTime = 0.02
-        gain = 5e-3 #gain for PID mode
+        fastMode = self.conf.fastMode
+
+        gain = self.conf.gain
 
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
@@ -459,16 +464,14 @@ class App(QMainWindow):
         Z.RemoveDrawings()
         FS = Z.FrameSize
         self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
-        #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
         while True:
             self.startbtn.setText('Wait for experiment to start')
 
             #First wait for the experiment to start:
-            while (not Z.ExperimentRunning) and (not self.stop):
+            while (not Z.ExperimentRunning) and (not self.stop) and (not self.quit):
                 FS = Z.FrameSize
                 self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
-                #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
-                sleep(SleepTime)
+                sleep(sleepTime)
 
             #Experiment has started:
             self.NameSpace.mode = self.rdb.state.lower()
@@ -479,11 +482,11 @@ class App(QMainWindow):
             self.NameSpace.q = self.q
             self.NameSpace.theta = self.theta
             self.NameSpace.maxStep = self.maxStep
+            self.NameSpace.fastMode = fastMode
             self.NameSpace.run = True
 
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
-            #self.rectangle = Z.DrawRectangle(*[i/2 for i in FS], *[np.clip(Size, 1, i) for i in FS], index=self.rectangle)
 
             cfilename = Z.FileName
             cfexists = isfile(cfilename) #whether ZEN already made the czi file (streaming)
@@ -515,12 +518,12 @@ class App(QMainWindow):
 
                     self.startbtn.setText('Experiment started')
 
-                    while (Z.ExperimentRunning or (not self.Queue.empty())) and (not self.stop):
+                    while (Z.ExperimentRunning or (not self.Queue.empty())) and (not self.stop) and (not self.quit):
                         pxsize = Z.pxsize
 
                         #Wait until feedbackloop analysed a new frame
-                        while Z.ExperimentRunning and (not self.stop) and self.Queue.empty():
-                            sleep(SleepTime)
+                        while Z.ExperimentRunning and (not self.stop) and (not self.quit) and self.Queue.empty():
+                            sleep(sleepTime)
                         if not self.Queue.empty():
                             Time, a, PiezoPos, FocusPos, STime = [], [], [], [], []
                             for i in range(20):
@@ -540,10 +543,10 @@ class App(QMainWindow):
                                 file.write('- [{},{},{},'.format(t, p, f))
                                 file.write('{},{},{},{},{},{},'.format(*b))
                                 file.write('{}]\n'.format(s))
-                                # Z.SaveDouble('Piezo {}'.format(Time), Z.GetPiezoPos())
-                                # Z.SaveDouble('Zstage {}'.format(Time), Z.GetCurrentZ())
 
                             a = np.array(a)
+                            if a.shape[1]==0:
+                                continue
                             a[:,5][a[:,5]>1.3] = np.nan
                             a[:,5][a[:,5]<0.7] = np.nan
                             ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
@@ -582,7 +585,7 @@ class App(QMainWindow):
                             break
                         sleep(0.25)
             else:
-                sleep(SleepTime)
+                sleep(sleepTime)
             if not self.contrunchkbx.isChecked():
                 break
 
@@ -593,16 +596,21 @@ class App(QMainWindow):
         self.stopbtn.setEnabled(False)
         self.startbtn.setEnabled(True)
         self.NameSpace.run = False
-        self.running = False
 
     def setstop(self):
-        self.contrunchkbx.setChecked(False)
-        self.stop = True
-
-    def quit(self):
+        # Stop being primed for an experiment
+        self.stopbtn.setEnabled(False)
         self.contrunchkbx.setChecked(False)
         self.stop = True
         self.NameSpace.stop = True
+        if not self.guithread is None and self.guithread.is_alive():
+            self.guithread.join(5)
+
+    def setquit(self):
+        # Quit the whole program
+        self.setstop()
+        self.quit = True
+        self.NameSpace.quit = True
         self.fblprocess.join(5)
         self.fblprocess.terminate()
 

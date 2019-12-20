@@ -67,38 +67,45 @@ def gaussian7grid(p, xv, yv):
     y = 2*dy*(cos*(yv-p[1])+(xv-p[0])*sin)
     return p[3]/4*(erf2(x+dx)-erf2(x-dx))*(erf2(y+dy)-erf2(y-dy))+p[4]
 
-def fitgauss(im, theta=0):
+def fitgauss(im, theta=0, fastmode=False):
     """ Fit gaussian function to image
         im:    2D array with image
         theta: Fixed theta to use
+        fastmode: True: only moment analysis, False: moment analysis, then fitting
         q:  [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
     """
     xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)))
     r = 5
     jm = crop(im, (xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))
     p = fitgaussint(jm, theta)
-    if (p[2] > 8) | (p[3] < 0.1):
-        return np.full(7, np.nan), np.nan
-    p[0:2] += (xy - r)
-    s = 2 * np.ceil(p[2])
-    jm = crop(im, (p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))
-    S = np.shape(jm)
-    p[0:2] -= (xy - s)
-    xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
-    g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv)) ** 2)
+    if fastmode: # Only use moment analysis
+        q = p
+        s = r
+        S = np.shape(jm)
+        xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
+    else: # Full fitting
+        if (p[2] > 8) | (p[3] < 0.1):
+            return np.full(7, np.nan), np.nan
+        p[0:2] += (xy - r)
+        s = 2 * np.ceil(p[2])
+        jm = crop(im, (p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))
+        S = np.shape(jm)
+        p[0:2] -= (xy - s)
+        xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
+        g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv))**2)
 
-    r = scipy.optimize.minimize(g, p, options={'disp': False, 'maxiter': 1e5})
-    r2 = 1 - (r.fun/np.sum((im-np.mean(im))**2))
-    q = r.x
+        r = scipy.optimize.minimize(g, p, options={'disp': False, 'maxiter': 1e5})
+        q = r.x
 
     q[2] = np.abs(q[2])
-    q[0:2] += (xy - s)
     q = np.append(q, theta)
     q[5] = np.abs(q[5])
+    r2 = 1 - np.nansum((jm-gaussian7grid(q, xv, yv))**2) / np.nansum((jm-np.nanmean(jm))**2)
+    q[0:2] += (xy - s)
 
     return q, r2
 
-def fg(im, Theta, f):
+def fg(im, Theta, f, fastmode=False):
     if np.ndim(im) == 1:
         s = np.sqrt(len(im)).astype(int)
         im = np.reshape(im, (s,s))
@@ -106,8 +113,7 @@ def fg(im, Theta, f):
         im = np.array(im)
     im -= scipy.ndimage.gaussian_filter(im, f * 1.1)
     im = scipy.ndimage.gaussian_filter(im, f / 1.1)
-    q, r2 = fitgauss(im, Theta)
-    return np.hstack((q, r2))
+    return np.hstack(fitgauss(im, Theta, fastmode))
 
 def fitgaussint(im, theta):
     """ Initial guess for gaussfit
@@ -167,7 +173,7 @@ def cliprect(FS, X, Y, Sx, Sy):
     else:
         return float((r+l-1)/2), float((t+b-1)/2), float(Sx), float(Sy)
 
-def last_czi_file(folder='d:\data', t=60):
+def last_czi_file(folder='d:\data', t=np.inf):
     """ finds last created czi file in folder created not more than t seconds ago
         wp@tl20191218
     """

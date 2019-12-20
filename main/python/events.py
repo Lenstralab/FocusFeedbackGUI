@@ -102,7 +102,7 @@ def events(clg):
     z = zen(EventHandler(clg))
     z.EnableEvent('LeftButtonDown')
 
-    while not clg.stop:
+    while not clg.quit:
         sleep(.01)
         pythoncom.PumpWaitingMessages()
 
