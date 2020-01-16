@@ -309,3 +309,23 @@ def ffind(expr, *args, **kwargs):
     else:
         fnames.sort()
     return fnames
+
+class truncated_list(list):
+    def __init__(self, length, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.length = length
+
+    def append(self, value):
+        super().append(value)
+        while len(self) > self.length:
+            self.pop(0)
+
+    def insert(self, index, value):
+        super().insert(index, value)
+        while len(self) > self.length:
+            self.pop(0)
+
+    def extend(self, iterable):
+        super().extend(iterable)
+        while len(self) > self.length:
+            self.pop(0)

@@ -57,6 +57,7 @@ def feedbackloop(Queue, NameSpace):
             G = Z.PiezoPos
             FS = Z.FrameSize
             TimeMem = 0
+            detected = functions.truncated_list(5, (True,)*5)
 
             if channel == 0:
                 wavelength = 646
@@ -82,31 +83,36 @@ def feedbackloop(Queue, NameSpace):
                     TTime = Time
 
                 #try to determine when something is detected by using a simple filter
-                if not any(np.isnan(a)) and a[7] > 0.3 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
-                    Queue.put((TTime, a[:8], PiezoPos, FocusPos ,STime))
+                if not any(np.isnan(a)) and a[7] > 0.6 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
+                    if sum(detected)/len(detected) > 0.75:
+                        Queue.put((TTime, a[:8], PiezoPos, FocusPos, STime))
 
-                    # Update the piezo position:
-                    if mode == 'pid':
-                        F = -np.log(a[5])
-                        if np.abs(F) > 1:
-                            F = 0
-                        Pz = P(F)
-                        Z.PiezoPos = Pz
+                        # Update the piezo position:
+                        if mode == 'pid':
+                            F = -np.log(a[5])
+                            if np.abs(F) > 1:
+                                F = 0
+                            Pz = P(F)
+                            Z.PiezoPos = Pz
 
-                        if Pz > (G + 5):
-                            P = pid(0, G, maxStep, TimeInterval, gain)
+                            if Pz > (G + 5):
+                                P = pid(0, G, maxStep, TimeInterval, gain)
+                        else:
+                            z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
+                            #print(TTime, z)
+                            if not np.isnan(z):
+                                Z.MovePiezoRel(-z)
+                        #print('Good:'+(' {:.2f}'*8).format(*a))
                     else:
-                        z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
-                        #print(TTime, z)
-                        if not np.isnan(z):
-                            Z.MovePiezoRel(-z)
-                    print('Good:'+(' {:.2f}'*8).format(*a))
+                        Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
+                    detected.append(True)
                 else:
                     Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
-                    if len(a)==8:
-                        print('Bad: '+(' {:.2f}'*8).format(*a))
-                    else:
-                        print('Len: ', len(a))
+                    detected.append(False)
+                    #if len(a)==8:
+                    #    print('Bad: '+(' {:.2f}'*8).format(*a))
+                    #else:
+                    #    print('Len: ', len(a))
 
                 # Wait for next frame:
                 while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
