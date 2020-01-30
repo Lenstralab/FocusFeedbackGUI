@@ -56,6 +56,10 @@ class zen:
         f.write('caller name: {}\n'.format(calf[1][3]))
         f.close()
 
+    @property
+    def ready(self):
+        return not self.VBA.Lsm5.DsRecordingActiveDocObject is None
+
     def SetAnalogMode(self, val=True):
         self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(val)
 
@@ -75,7 +79,7 @@ class zen:
     def reconnect(fun):
         def f(self,*args):
             try:
-                fun(self,*args)
+                fun(self, *args)
             except:
                 print('reconnecting...')
                 self.ZEN = None
@@ -85,19 +89,27 @@ class zen:
         return f
 
     def EnableEvent(self, event):
-        self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), True)
+        if self.ready:
+            self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), True)
 
     def DisableEvent(self, event):
-        self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), False)
+        if self.ready:
+            self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), False)
 
     @property
     def IsBusy(self):
-        return self.VBA.Lsm5.DsRecordingActiveDocObject.IsBusy()
+        if self.ready:
+            return self.VBA.Lsm5.DsRecordingActiveDocObject.IsBusy()
+        else:
+            return True
 
     @property
     def MousePosition(self):
-        X = self.VBA.Lsm5.DsRecordingActiveDocObject.GetCurrentMousePosition()
-        return (X[5] + 1, X[4] + 1)
+        if self.ready:
+            X = self.VBA.Lsm5.DsRecordingActiveDocObject.GetCurrentMousePosition()
+            return (X[5] + 1, X[4] + 1)
+        else:
+            return (0, 0)
 
     @property
     def MagStr(self):
@@ -161,7 +173,10 @@ class zen:
 
     @property
     def Title(self):
-        return self.VBA.Lsm5.DsRecordingActiveDocObject.Title()
+        if self.ready:
+            return self.VBA.Lsm5.DsRecordingActiveDocObject.Title()
+        else:
+            return ''
 
     @property
     def GetCurrentZ(self):
@@ -169,8 +184,11 @@ class zen:
 
     @property
     def FrameSize(self):
-        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
-        return ScanDoc.GetDimensionX(), ScanDoc.GetDimensionY()
+        if self.ready:
+            ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+            return ScanDoc.GetDimensionX(), ScanDoc.GetDimensionY()
+        else:
+            return 0, 0
 
     def GetFrameCenter(self, Channel=1, Size=32):
         Size = 2*int((Size+1)/2) #Ensure evenness
@@ -239,43 +257,49 @@ class zen:
         return TI
 
     def DrawEllipse(self, X, Y, R, E, T, Color=65025, LineWidth=2, index=None):
-        #X, Y, R in pixels, T in rad
-        if E <= 0:
-            E = 1
-        Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+        if self.ready:
+            #X, Y, R in pixels, T in rad
+            if E <= 0:
+                E = 1
+            Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
 
-        index = self.ManipulateDrawingList(Overlay, index)
+            index = self.ManipulateDrawingList(Overlay, index)
 
-        Overlay.LineWidth = LineWidth
-        Overlay.Color = Color #Green
+            Overlay.LineWidth = LineWidth
+            Overlay.Color = Color #Green
 
-        Overlay.AddDrawingElement(5,3,(X,X+R*np.sqrt(E)*np.cos(T),X+R/np.sqrt(E)*np.sin(T)),(Y,Y-R*np.sqrt(E)*np.sin(T),Y+R/np.sqrt(E)*np.cos(T)))
-        return index
+            Overlay.AddDrawingElement(5,3,(X,X+R*np.sqrt(E)*np.cos(T),X+R/np.sqrt(E)*np.sin(T)),(Y,Y-R*np.sqrt(E)*np.sin(T),Y+R/np.sqrt(E)*np.cos(T)))
+            return index
 
     def DrawRectangle(self, X, Y, Sx, Sy, Color=65025, LineWidth=2, index=None):
-        Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+        if self.ready:
+            Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
 
-        index = self.ManipulateDrawingList(Overlay, index)
+            index = self.ManipulateDrawingList(Overlay, index)
 
-        Overlay.LineWidth = LineWidth
-        Overlay.Color = Color #Green
+            Overlay.LineWidth = LineWidth
+            Overlay.Color = Color #Green
 
-        Overlay.AddDrawingElement(4,2,(float(X-Sx/2),float(X+Sx/2)),(float(Y-Sy/2),float(Y+Sy/2)))
-        return index
+            Overlay.AddDrawingElement(4,2,(float(X-Sx/2),float(X+Sx/2)),(float(Y-Sy/2),float(Y+Sy/2)))
+            return index
 
     def RemoveDrawings(self):
-        self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay().RemoveAllDrawingElements()
+        if self.ready:
+            self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay().RemoveAllDrawingElements()
         self.ZDL = []
 
     def RemoveDrawing(self, index):
-        Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
-        lst = self.ZDL
-        if Overlay.GetNumberDrawingElements() != len(lst):
-            lst = list(range(Overlay.GetNumberDrawingElements()))
-        if index in lst:
-            Overlay.RemoveDrawingElement(lst.index(index))
-            lst.remove(index)
-            self.ZDL = lst
+        if self.ready:
+            Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+            lst = self.ZDL
+            if Overlay.GetNumberDrawingElements() != len(lst):
+                lst = list(range(Overlay.GetNumberDrawingElements()))
+            if index in lst:
+                Overlay.RemoveDrawingElement(lst.index(index))
+                lst.remove(index)
+                self.ZDL = lst
+        else:
+            self.ZDL = []
 
     def ManipulateDrawingList(self, Overlay, index):
         lst = self.ZDL

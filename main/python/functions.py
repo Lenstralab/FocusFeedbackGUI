@@ -111,6 +111,7 @@ def fg(im, Theta, f, fastmode=False):
         im = np.reshape(im, (s,s))
     else:
         im = np.array(im)
+    im = im.astype(float)
     im -= scipy.ndimage.gaussian_filter(im, f * 1.1)
     im = scipy.ndimage.gaussian_filter(im, f / 1.1)
     return np.hstack(fitgauss(im, Theta, fastmode))
@@ -314,18 +315,20 @@ class truncated_list(list):
     def __init__(self, length, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.length = length
+        self.truncate()
 
     def append(self, value):
         super().append(value)
-        while len(self) > self.length:
-            self.pop(0)
+        self.truncate()
 
     def insert(self, index, value):
         super().insert(index, value)
-        while len(self) > self.length:
-            self.pop(0)
+        self.truncate()
 
     def extend(self, iterable):
         super().extend(iterable)
+        self.truncate()
+
+    def truncate(self):
         while len(self) > self.length:
             self.pop(0)

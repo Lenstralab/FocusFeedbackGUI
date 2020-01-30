@@ -37,6 +37,11 @@ def firstargonly(fun):
     """
     return lambda *args: fun(args[0])
 
+def thread(fun):
+    """ decorator to run function in a separate thread to keep the gui responsive
+    """
+    return lambda *args: Thread(target=fun, args=args).start()
+
 def feedbackloop(Queue, NameSpace):
     # this is run in a separate process
     np.seterr(all='ignore');
@@ -83,7 +88,7 @@ def feedbackloop(Queue, NameSpace):
                     TTime = Time
 
                 #try to determine when something is detected by using a simple filter
-                if not any(np.isnan(a)) and a[7] > 0.6 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
+                if not any(np.isnan(a)) and a[7] > 0.3 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
                     if sum(detected)/len(detected) > 0.75:
                         Queue.put((TTime, a[:8], PiezoPos, FocusPos, STime))
 
@@ -135,6 +140,7 @@ class App(QMainWindow):
         self.stop = False # Stop (waiting for) experiment
         self.quit = False # Quit program
         self.conf = config.conf()
+        self.curzentitle = ''
 
         self.zen = zen()
 
@@ -173,6 +179,17 @@ class App(QMainWindow):
 
         self.setCentralWidget(self.central_widget)
         self.show()
+        self.wait_for_zen()
+
+    @thread
+    def wait_for_zen(self):
+        z = zen()
+        while not z.ready and not self.stop and not self.quit:
+            sleep(0.1)
+        z.DisconnectZEN()
+        self.contrunchkbx.setEnabled(True)
+        self.centerbox.setEnabled(True)
+        self.startbtn.setEnabled(True)
 
     def menus(self):
         mainMenu = self.menuBar()
@@ -204,14 +221,17 @@ class App(QMainWindow):
         self.contrunchkbx = QCheckBox('Stay primed')
         self.contrunchkbx.setToolTip('Stay primed')
         self.contrunchkbx.toggled.connect(self.stayprimed)
+        self.contrunchkbx.setEnabled(False)
 
         self.centerbox = QCheckBox('Center on click')
         self.centerbox.setToolTip('Push, then click on image')
         self.centerbox.toggled.connect(self.tglcenterbox)
+        self.centerbox.setEnabled(False)
 
         self.startbtn = QPushButton('Prime for experiment')
         self.startbtn.setToolTip('Prime for experiment')
         self.startbtn.clicked.connect(self.prime)
+        self.startbtn.setEnabled(False)
 
         self.stopbtn = QPushButton('Stop')
         self.stopbtn.setToolTip('Stop')
@@ -362,10 +382,13 @@ class App(QMainWindow):
         self.tab3.layout.addWidget(self.map.canvas)
         self.tab3.layout.addWidget(self.maprstbtn)
         LP = self.zen.StagePos
-        FS = self.zen.FrameSize
-        pxsize = self.zen.pxsize
-        self.map.append_data(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
-        self.map.draw()
+        try:
+            FS = self.zen.FrameSize
+            pxsize = self.zen.pxsize
+            self.map.append_data(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
+            self.map.draw()
+        except:
+            pass
 
     def resetmap(self):
         self.map.remove_data()
