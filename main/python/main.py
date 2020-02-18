@@ -6,7 +6,7 @@ from time import sleep, time
 from datetime import datetime
 from functools import partial
 from threading import Thread
-from multiprocessing import Process, Queue, Manager, freeze_support
+from multiprocessing import Process, Queue, Manager, freeze_support, queues
 
 import numpy as np
 from PyQt5.QtWidgets import *
@@ -24,7 +24,7 @@ from zen import zen
 
 np.seterr(all='ignore');
 
-def errwrap(fun,default,*args):
+def errwrap(fun, default, *args):
     """ returns either the result of fun(*args) or default when an error occurs
     """
     try:
@@ -37,10 +37,16 @@ def firstargonly(fun):
     """
     return lambda *args: fun(args[0])
 
+threads = []
 def thread(fun):
     """ decorator to run function in a separate thread to keep the gui responsive
     """
-    return lambda *args: Thread(target=fun, args=args).start()
+    def tfun(*args, **kwargs):
+        T = Thread(target=fun, args=args, kwargs=kwargs)
+        threads.append(T)
+        T.start()
+        return T
+    return tfun
 
 def feedbackloop(Queue, NameSpace):
     # this is run in a separate process
@@ -359,6 +365,11 @@ class App(QMainWindow):
         self.grid.addWidget(self.maxStepfld, 6, 5)
         self.grid.addWidget(QLabel('um'), 6, 6)
 
+        self.calibbtn = QPushButton('Calibrate with beads')
+        self.calibbtn.setToolTip('Calibrate with beads')
+        self.calibbtn.clicked.connect(self.calibrate)
+        self.grid.addWidget(self.calibbtn, 7, 5)
+
         self.tab2.setLayout(self.grid)
 
         self.confopen(self.conf.filename)
@@ -389,6 +400,26 @@ class App(QMainWindow):
             self.map.draw()
         except:
             pass
+
+    def calibrate(self, *args, **kwargs):
+        self.calibbtn.setEnabled(False)
+        options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+        file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)", options=options)
+        if file:
+            self.calibrate_file(file)
+
+    @thread
+    def calibrate_file(self, file):
+        from calibz import calibz
+        np.seterr(all='ignore');
+        print('Hello world!')
+        self.theta, self.q = calibz(file)
+        self.NameSpace.q = self.q
+        self.NameSpace.theta = self.theta
+        self.calibbtn.setEnabled(True)
+        self.thetafld.setText('{}'.format(self.theta))
+        for i in range(9):
+            self.edt[i].setText('{}'.format(self.q[i]))
 
     def resetmap(self):
         self.map.remove_data()
@@ -640,6 +671,11 @@ class App(QMainWindow):
         self.setstop()
         self.quit = True
         self.NameSpace.quit = True
+
+        for T in threads:
+            print(T)
+            T.join()
+
         self.fblprocess.join(5)
         self.fblprocess.terminate()
 
@@ -712,11 +748,21 @@ class SubPlot:
         self.ax.autoscale_view()
 
     def range_data(self, x, y, range=250, N=0):
+        margin = 0.05
         x = np.hstack((self.plt[N].get_xdata(), x))
         y = np.hstack((self.plt[N].get_ydata(), y))
-        self.plt[N].set_ydata(y[x > np.nanmax(x) - range])
-        self.plt[N].set_xdata(x[x > np.nanmax(x) - range])
-        self.ax.relim()
+        y = y[x > np.nanmax(x) - range]
+        x = x[x > np.nanmax(x) - range]
+        self.plt[N].set_ydata(y)
+        self.plt[N].set_xdata(x)
+        xmin, xmax = np.nanmin(x), np.nanmax(x)
+        deltax = (xmax - xmin) * margin
+        if np.isfinite(deltax) and not xmin==xmax:
+            self.ax.set_xlim(xmin - deltax, xmax + deltax)
+        ymin, ymax = np.nanmin(y), np.nanmax(y)
+        deltay = (ymax - ymin) * margin
+        if np.isfinite(deltay) and not ymin==ymax:
+            self.ax.set_ylim(ymin - deltay, ymax + deltay)
         self.ax.autoscale_view()
 
     def numel_data(self, x, y, range=10000, N=0):

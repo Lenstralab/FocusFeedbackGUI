@@ -257,7 +257,7 @@ class zen:
         return TI
 
     def DrawEllipse(self, X, Y, R, E, T, Color=65025, LineWidth=2, index=None):
-        if self.ready:
+        if self.ready and np.all(np.isfinite((X, Y, R, E, T))):
             #X, Y, R in pixels, T in rad
             if E <= 0:
                 E = 1
@@ -270,9 +270,12 @@ class zen:
 
             Overlay.AddDrawingElement(5,3,(X,X+R*np.sqrt(E)*np.cos(T),X+R/np.sqrt(E)*np.sin(T)),(Y,Y-R*np.sqrt(E)*np.sin(T),Y+R/np.sqrt(E)*np.cos(T)))
             return index
+        else:
+            self.RemoveDrawing(index)
+            return None
 
     def DrawRectangle(self, X, Y, Sx, Sy, Color=65025, LineWidth=2, index=None):
-        if self.ready:
+        if self.ready and np.all(np.isfinite((X, Y, Sx, Sy))):
             Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
 
             index = self.ManipulateDrawingList(Overlay, index)
@@ -282,6 +285,9 @@ class zen:
 
             Overlay.AddDrawingElement(4,2,(float(X-Sx/2),float(X+Sx/2)),(float(Y-Sy/2),float(Y+Sy/2)))
             return index
+        else:
+            self.RemoveDrawing(index)
+            return None
 
     def RemoveDrawings(self):
         if self.ready:
