@@ -151,9 +151,9 @@ def calibz(im):
     if not isinstance(im, imread):
         im = imread(im)
 
-    pdfpath = os.path.splitext(im.path)[0].replace('data', 'analysis') + '_Cyllens_calib.pdf'
+    pdfpath = os.path.splitext(im.path)[0] + '_Cyllens_calib.pdf'
     utilities.mkdir(os.path.split(pdfpath)[0])
-    pdf = PdfPages(os.path.splitext(im.path)[0].replace('data', 'analysis') + '_Cyllens_calib.pdf')
+    pdf = PdfPages(pdfpath)
 
     a = localisation.detect_points_sf(im.maxz(1), .35 / im.NA / im.pxsize)
 
@@ -305,9 +305,10 @@ def calibz(im):
     f['ddc'] = np.sqrt(dpx[:, 3] ** 2 + dpy[:, 3] ** 2)
 
     f0 = f.copy()
-    print(f['dc'])
+    #print(f['dc'])
 
     dc = [i/(im.immersionN**2/1.33**2) for i in (0.1, 0.6)]
+    #dc = (0.1, 0.6)
 
     f = f.query('0.1<sigmax<0.5 & 0.1<sigmay<0.5 & abs(Ax)<10 & abs(Bx)<10 & abs(Ay)<10 & abs(By)<10 & X2x<20 & X2y<20 & {}<dc<{} & cx<10 & cy<10'.format(*dc))
 
@@ -440,8 +441,8 @@ def calibz(im):
     except:
         pass
 
-    with open(pdfpath.replace('.pdf', '.pkl'), 'wb') as file:
-        pickle.dump(res, file)
+    #with open(pdfpath.replace('.pdf', '.pkl'), 'wb') as file:
+    #    pickle.dump(res, file)
     return theta, q
 
 

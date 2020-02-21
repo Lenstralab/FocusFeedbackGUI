@@ -120,10 +120,6 @@ def feedbackloop(Queue, NameSpace):
                 else:
                     Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
                     detected.append(False)
-                    #if len(a)==8:
-                    #    print('Bad: '+(' {:.2f}'*8).format(*a))
-                    #else:
-                    #    print('Len: ', len(a))
 
                 # Wait for next frame:
                 while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
@@ -414,8 +410,8 @@ class App(QMainWindow):
         np.seterr(all='ignore');
         print('Hello world!')
         self.theta, self.q = calibz(file)
-        self.NameSpace.q = self.q
-        self.NameSpace.theta = self.theta
+        #self.NameSpace.q = self.q
+        #self.NameSpace.theta = self.theta
         self.calibbtn.setEnabled(True)
         self.thetafld.setText('{}'.format(self.theta))
         for i in range(9):
@@ -494,8 +490,7 @@ class App(QMainWindow):
     def cmstr(self):
         return self.cyllensdrp[self.channel].currentText()+self.zen.MagStr
 
-    @firstargonly
-    def closeEvent(self):
+    def closeEvent(self, *args, **kwargs):
         self.setquit()
 
     def prime(self):
@@ -507,8 +502,7 @@ class App(QMainWindow):
         if self.contrunchkbx.isChecked():
             self.prime()
 
-    @firstargonly
-    def run(self):
+    def run(self, *args, **kwargs):
         np.seterr(all='ignore');
         sleepTime = 0.02 #GUI update interval
 
