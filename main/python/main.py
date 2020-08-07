@@ -75,7 +75,6 @@ def feedbackloop(Queue, NameSpace):
             else:
                 wavelength = 510
             f = wavelength / 2 / Z.ObjectiveNA / Z.pxsize
-            fwhmlim = f * 2 * np.sqrt(2 * np.log(2))
 
             if mode == 'pid':
                 P = pid(0, G, maxStep, TimeInterval, gain)
@@ -83,7 +82,6 @@ def feedbackloop(Queue, NameSpace):
             while Z.ExperimentRunning and (not NameSpace.stop):
                 STime = time()
                 Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
-                #Frame, Time = Z.GetFrame(channel, Xs=(Size, Size))
                 PiezoPos = Z.PiezoPos
                 FocusPos = Z.GetCurrentZ
                 a = functions.fg(Frame, theta, f, fastMode)
@@ -93,10 +91,11 @@ def feedbackloop(Queue, NameSpace):
                 else:
                     TTime = Time
 
-                #try to determine when something is detected by using a simple filter
-                if not any(np.isnan(a)) and a[7] > 0.3 and np.abs(a[5]-1) < 0.3 and np.abs(np.log(a[2] / fwhmlim)) < 0.7:
-                    if sum(detected)/len(detected) > 0.75:
-                        Queue.put((TTime, a[:8], PiezoPos, FocusPos, STime))
+                #try to determine when something is detected by using a simple filter on R2, elipticity and psf width
+                if not any(np.isnan(a)) and all([l[0]<n<l[1] for n, l in zip(a, NameSpace.limits)]):
+                # if not any(np.isnan(a)) and a[7] > -2 and np.abs(a[5]-1) < 0.3 and fwhmlim/3 < a[2] < fwhmlim*3:
+                    if sum(detected)/len(detected) > 0.35:
+                        Queue.put((TTime, True, a[:8], PiezoPos, FocusPos, STime))
 
                         # Update the piezo position:
                         if mode == 'pid':
@@ -110,16 +109,15 @@ def feedbackloop(Queue, NameSpace):
                                 P = pid(0, G, maxStep, TimeInterval, gain)
                         else:
                             z = np.clip(cyl.findz(a[5], q), -maxStep, maxStep)
-                            #print(TTime, z)
                             if not np.isnan(z):
                                 Z.MovePiezoRel(-z)
-                        #print('Good:'+(' {:.2f}'*8).format(*a))
                     else:
-                        Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
+                        Queue.put((TTime, False, a[:8], PiezoPos, FocusPos, STime))
                     detected.append(True)
                 else:
-                    Queue.put((TTime, np.full(np.shape(a), np.nan), PiezoPos, FocusPos, STime))
+                    Queue.put((TTime, False, a[:8], PiezoPos, FocusPos, STime))
                     detected.append(False)
+                    # print(a)
 
                 # Wait for next frame:
                 while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
@@ -143,6 +141,7 @@ class App(QMainWindow):
         self.quit = False # Quit program
         self.conf = config.conf()
         self.curzentitle = ''
+        self.limits = [[-np.inf, np.inf]]*8
 
         self.zen = zen()
 
@@ -245,7 +244,8 @@ class App(QMainWindow):
         self.plot = PlotCanvas()
         self.eplot = SubPlot(self.plot, 611)
         self.eplot.append_plot('--b')
-        #self.eplot.ax.set_yscale('log')
+        self.eplot.append_plot('--k')
+        self.eplot.append_plot('--k')
         self.eplot.ax.set_ylabel('Ellipticity')
         self.eplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
@@ -254,12 +254,15 @@ class App(QMainWindow):
         self.iplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
         self.splot = SubPlot(self.plot, 613)
+        self.splot.append_plot('--k')
+        self.splot.append_plot('--k')
         self.splot.ax.set_ylabel('Sigma (nm)')
         self.splot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
-        self.oplot = SubPlot(self.plot, 614)
-        self.oplot.ax.set_ylabel('Offset')
-        self.oplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+        self.rplot = SubPlot(self.plot, 614)
+        self.rplot.ax.set_ylabel('R squared')
+        self.rplot.append_plot('--k')
+        self.rplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
         self.pplot = SubPlot(self.plot, 615)
         self.pplot.append_plot()
@@ -339,7 +342,7 @@ class App(QMainWindow):
 
         self.grid.addWidget(QLabel('Duolink filterset:'), 3, 4)
         self.dlfs = QComboBox()
-        self.dlfs.addItems(['488/561 & 488/640', '561/640 & empty'])
+        self.dlfs.addItems(['488/_561_/640 & 488/_640_', '_561_/640 & empty'])
         self.dlfs.currentIndexChanged.connect(self.changeDL)
         self.grid.addWidget(self.dlfs, 3, 5)
 
@@ -527,6 +530,17 @@ class App(QMainWindow):
                 self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
                 sleep(sleepTime)
 
+            if self.channel == 0:
+                wavelength = 646
+            else:
+                wavelength = 510
+            f = wavelength / 2 / Z.ObjectiveNA / Z.pxsize
+            fwhmlim = f * 2 * np.sqrt(2 * np.log(2))
+
+            self.limits[2] = [fwhmlim/3, fwhmlim*3]
+            self.limits[5] = [0.7, 1.3]
+            self.limits[7] = [-2, np.inf]
+
             #Experiment has started:
             self.NameSpace.mode = self.rdb.state.lower()
             self.NameSpace.Size = Size
@@ -538,6 +552,7 @@ class App(QMainWindow):
             self.NameSpace.maxStep = self.maxStep
             self.NameSpace.fastMode = fastMode
             self.NameSpace.run = True
+            self.NameSpace.limits = self.limits
 
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
@@ -579,15 +594,16 @@ class App(QMainWindow):
                         while Z.ExperimentRunning and (not self.stop) and (not self.quit) and self.Queue.empty():
                             sleep(sleepTime)
                         if not self.Queue.empty():
-                            Time, a, PiezoPos, FocusPos, STime = [], [], [], [], []
+                            Time, Fitted, a, PiezoPos, FocusPos, STime = [], [], [], [], [], []
                             for i in range(20):
                                 if not self.Queue.empty():
                                     Q = self.Queue.get()
                                     Time.append(Q[0])
-                                    a.append(Q[1])
-                                    PiezoPos.append(Q[2])
-                                    FocusPos.append(Q[3])
-                                    STime.append(Q[4])
+                                    Fitted.append(Q[1])
+                                    a.append(Q[2])
+                                    PiezoPos.append(Q[3])
+                                    FocusPos.append(Q[4])
+                                    STime.append(Q[5])
                                     if z0 is None:
                                         z0 = PiezoPos[0]+FocusPos[0]
                                 else:
@@ -601,19 +617,27 @@ class App(QMainWindow):
                             a = np.array(a)
                             if a.shape[1]==0:
                                 continue
-                            a[:,5][a[:,5]>1.3] = np.nan
-                            a[:,5][a[:,5]<0.7] = np.nan
+                            a[:,2][a[:,2] < self.limits[2][0]/2] = np.nan
+                            a[:,2][a[:,2] > self.limits[2][1]*2] = np.nan
+                            a[:,5][a[:,5] < self.limits[5][0]/2] = np.nan
+                            a[:,5][a[:,5] > self.limits[5][1]*2] = np.nan
+                            a[:,7][a[:,7] < self.limits[7][0]*2] = np.nan
                             ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
                             a[ridx,:] = np.nan
 
-                            zfit = np.array([-cyl.findz(e, self.q) for e in a[:, 5]])
+                            zfit = np.array([-cyl.findz(e, self.q) if f else np.nan for e, f in zip(a[:, 5], Fitted)])
                             z = 1000*(zfit - np.array(PiezoPos) - np.array(FocusPos) + z0)
 
                             self.eplot.range_data(Time, a[:,5])
                             self.eplot.range_data(Time, [1]*len(Time), N=1)
+                            self.eplot.range_data(Time, [self.limits[5][0]]*len(Time), N=2)
+                            self.eplot.range_data(Time, [self.limits[5][1]]*len(Time), N=3)
                             self.iplot.range_data(Time, a[:,3])
                             self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize)
-                            self.oplot.range_data(Time, a[:,4])
+                            self.splot.range_data(Time, [self.limits[2][0]/2/np.sqrt(2*np.log(2))*pxsize]*len(Time), N=1)
+                            self.splot.range_data(Time, [self.limits[2][1]/2/np.sqrt(2*np.log(2))*pxsize]*len(Time), N=2)
+                            self.rplot.range_data(Time, a[:, 4])
+                            self.rplot.range_data(Time, [self.limits[7][0]]*len(Time), N=1)
                             self.pplot.range_data(Time, PiezoPos)
                             self.pplot.range_data(Time, PiezoPos+zfit, N=1)
                             self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize)
@@ -621,12 +645,14 @@ class App(QMainWindow):
                             self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z)
                             self.plot.draw()
 
-                            X = float(a[-1,0] + (SizeX - Size) / 2 + Pos[0])
-                            Y = float(a[-1,1] + (SizeY - Size) / 2 + Pos[1])
-                            R = float(a[-1,2])
-                            E = float(a[-1,5])
-
-                            self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
+                            if Fitted[-1]:
+                                X = float(a[-1,0] + (SizeX - Size) / 2 + Pos[0])
+                                Y = float(a[-1,1] + (SizeY - Size) / 2 + Pos[1])
+                                R = float(a[-1,2])
+                                E = float(a[-1,5])
+                                self.ellipse = Z.DrawEllipse(X, Y, R, E, self.theta, index=self.ellipse)
+                            else:
+                                Z.RemoveDrawing(self.ellipse)
 
                 #After the experiment:
                 Z.RemoveDrawing(self.ellipse)
