@@ -64,7 +64,7 @@ def EventHandler(CLG):
         @errwrap
         def OnThrowPropertyEvent(self, *args):
             z = zen()
-            #print(('OnThrowProperyEvent:', args))
+            # print(('OnThrowProperyEvent:', args))
 
             #make sure lmb event is enabled on a new document
             if self.clg.curzentitle != z.Title:
@@ -93,6 +93,8 @@ def EventHandler(CLG):
                 pxsize = z.pxsize
                 self.clg.map.numel_data(LP[0]/1000, LP[1]/1000, FS[0]*pxsize/1e6, FS[1]*pxsize/1e6)
                 self.clg.map.draw()
+            elif args[1] in ('DataColorPalette', 'FramesPerStack'):
+                self.clg.changeColor(z)
             z.DisconnectZEN()
 
     return EventHandlerCls

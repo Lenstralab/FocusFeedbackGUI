@@ -77,15 +77,15 @@ class zen:
         zendrawinglist = val
 
     def reconnect(fun):
-        def f(self,*args):
+        def f(self, *args):
             try:
-                fun(self, *args)
+                return fun(self, *args)
             except:
-                print('reconnecting...')
+                # print('reconnecting...')
                 self.ZEN = None
                 self.VBA = None
                 self.ConnectZEN()
-                fun(*args)
+                return fun(self, *args)
         return f
 
     def EnableEvent(self, event):
@@ -223,6 +223,33 @@ class zen:
         if Time > 0:
             Time -= 1
         return np.reshape(ScanDoc.GetSubregion(Channel, X, Y, 0, Time, 1, 1, 1, 1, Sx, Sy, 1, 1, 2)[0], (Sx, Sy)), Time
+
+    @property
+    def ChannelColorsHex(self):
+        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        color = []
+        for channel in range(self.nChannels):
+            h = np.base_repr(ScanDoc.ChannelColor(channel), 16, 6)[-6:]
+            color.append('#'+h[4:]+h[2:4]+h[:2])
+        return color
+
+    @property
+    def ChannelColors(self):
+        return [[int(hcolor[2*i+1:2*(i+1)+1], 16)/255 for i in range(3)] for hcolor in self.ChannelColorsHex]
+
+    @property
+    def ChannelNames(self):
+        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        return [ScanDoc.ChannelName(i) for i in range(self.nChannels)]
+
+    @staticmethod
+    def CameraFromChannelName(ChannelName):
+        return int(search('(?<=TV)\d', ChannelName).group(0))-1
+
+    @property
+    def nChannels(self):
+        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        return ScanDoc.GetDimensionChannels()
 
     @property
     def GetTime(self):

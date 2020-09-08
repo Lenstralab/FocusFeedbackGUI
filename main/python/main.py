@@ -6,7 +6,7 @@ from time import sleep, time
 from datetime import datetime
 from functools import partial
 from threading import Thread
-from multiprocessing import Process, Queue, Manager, freeze_support, queues
+from multiprocessing import Process, Queue, Manager, freeze_support
 
 import numpy as np
 from PyQt5.QtWidgets import *
@@ -64,6 +64,7 @@ def feedbackloop(Queue, NameSpace):
             theta = NameSpace.theta
             maxStep = NameSpace.maxStep
             fastMode = NameSpace.fastMode
+            feedbackMode = NameSpace.feedbackMode
             TimeInterval = Z.TimeInterval
             G = Z.PiezoPos
             FS = Z.FrameSize
@@ -149,6 +150,9 @@ class App(QMainWindow):
         self.maxStep = 1
         self.theta = 0
 
+        self.feedbackMode = 0  # Average, 1: Alternate
+        self.channel = 1
+
         self.ellipse = None
         self.rectangle = None
         self.MagStr = self.zen.MagStr
@@ -187,6 +191,8 @@ class App(QMainWindow):
         z = zen()
         while not z.ready and not self.stop and not self.quit:
             sleep(0.1)
+        self.confopen(self.conf.filename, z)
+        self.changeColor(z)
         z.DisconnectZEN()
         self.contrunchkbx.setEnabled(True)
         self.centerbox.setEnabled(True)
@@ -243,9 +249,9 @@ class App(QMainWindow):
 
         self.plot = PlotCanvas()
         self.eplot = SubPlot(self.plot, 611)
-        self.eplot.append_plot('--b')
-        self.eplot.append_plot('--k')
-        self.eplot.append_plot('--k')
+        self.eplot.append_plot('--k',)
+        self.eplot.append_plot('--', 'gray')
+        self.eplot.append_plot('--', 'gray')
         self.eplot.ax.set_ylabel('Ellipticity')
         self.eplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
@@ -265,7 +271,7 @@ class App(QMainWindow):
         self.rplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
 
         self.pplot = SubPlot(self.plot, 615)
-        self.pplot.append_plot()
+        self.pplot.append_plot('-k')
         self.pplot.ax.set_xlabel('Time (frames)')
         self.pplot.ax.set_ylabel('Piezo pos (µm)')
 
@@ -321,57 +327,60 @@ class App(QMainWindow):
             self.unt.append(QLabel(l))
             self.grid.addWidget(self.unt[-1], i, 3)
 
-        self.channel = 1
         self.grid.addWidget(QLabel('Feedback channel:'), 0, 4)
-        self.rdbch = RadioButtons(('R', 'G'), init_state=self.channel, callback=self.changechannel)
+        self.rdbch = CheckBoxes(['{}'.format(i) for i in range(10)], init_state=[self.channel], callback=self.changechannel)
         self.grid.addWidget(self.rdbch, 0, 5)
 
+        self.grid.addWidget(QLabel('Feedback mode:'), 1, 4)
+        self.feedbackModeDrp = QComboBox()
+        self.feedbackModeDrp.addItems(['Average', 'Alternate'])
+        self.feedbackModeDrp.currentIndexChanged.connect(self.changeFeedbackMode)
+        self.grid.addWidget(self.feedbackModeDrp, 1, 5)
+
         self.cyllensdrp = []
-        self.grid.addWidget(QLabel('Cylindrical lens R:'), 1, 4)
+        self.grid.addWidget(QLabel('Cylindrical lens back:'), 2, 4)
         self.cyllensdrp.append(QComboBox())
         self.cyllensdrp[-1].addItems(['None','A','B'])
         self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
-        self.grid.addWidget(self.cyllensdrp[-1], 1, 5)
+        self.grid.addWidget(self.cyllensdrp[-1], 2, 5)
 
-        self.grid.addWidget(QLabel('Cylindrical lens G:'), 2, 4)
+        self.grid.addWidget(QLabel('Cylindrical lens front:'), 3, 4)
         self.cyllensdrp.append(QComboBox())
         self.cyllensdrp[-1].addItems(['None','A', 'B'])
         self.cyllensdrp[-1].setCurrentIndex(1)
         self.cyllensdrp[-1].currentIndexChanged.connect(partial(self.confopen, self.conf.filename))
-        self.grid.addWidget(self.cyllensdrp[-1], 2, 5)
+        self.grid.addWidget(self.cyllensdrp[-1], 3, 5)
 
-        self.grid.addWidget(QLabel('Duolink filterset:'), 3, 4)
+        self.grid.addWidget(QLabel('Duolink filterset:'), 4, 4)
         self.dlfs = QComboBox()
         self.dlfs.addItems(['488/_561_/640 & 488/_640_', '_561_/640 & empty'])
         self.dlfs.currentIndexChanged.connect(self.changeDL)
-        self.grid.addWidget(self.dlfs, 3, 5)
+        self.grid.addWidget(self.dlfs, 4, 5)
 
-        self.grid.addWidget(QLabel('Duolink filter:'), 4, 4)
+        self.grid.addWidget(QLabel('Duolink filter:'), 5, 4)
         self.chdlf = RadioButtons(('1', '2'), init_state=self.zen.DLFilter, callback=self.changeDLF)
-        self.grid.addWidget(self.chdlf, 4, 5)
+        self.grid.addWidget(self.chdlf, 5, 5)
         self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
-        self.grid.addWidget(self.dlf, 4, 6)
+        self.grid.addWidget(self.dlf, 5, 6)
 
-        self.grid.addWidget(QLabel('theta:'), 5, 4)
+        self.grid.addWidget(QLabel('theta:'), 6, 4)
         self.thetafld = QLineEdit()
         self.thetafld.textChanged.connect(self.changetheta)
-        self.grid.addWidget(self.thetafld, 5, 5)
-        self.grid.addWidget(QLabel('rad'), 5, 6)
+        self.grid.addWidget(self.thetafld, 6, 5)
+        self.grid.addWidget(QLabel('rad'), 6, 6)
 
-        self.grid.addWidget(QLabel('Max stepsize:'), 6, 4)
+        self.grid.addWidget(QLabel('Max stepsize:'), 7, 4)
         self.maxStepfld = QLineEdit()
         self.maxStepfld.textChanged.connect(self.changemaxStep)
-        self.grid.addWidget(self.maxStepfld, 6, 5)
-        self.grid.addWidget(QLabel('um'), 6, 6)
+        self.grid.addWidget(self.maxStepfld, 7, 5)
+        self.grid.addWidget(QLabel('um'), 7, 6)
 
         self.calibbtn = QPushButton('Calibrate with beads')
         self.calibbtn.setToolTip('Calibrate with beads')
         self.calibbtn.clicked.connect(self.calibrate)
-        self.grid.addWidget(self.calibbtn, 7, 5)
+        self.grid.addWidget(self.calibbtn, 8, 5)
 
         self.tab2.setLayout(self.grid)
-
-        self.confopen(self.conf.filename)
 
     def settab3(self):
         self.tab3 = QWidget()
@@ -399,6 +408,14 @@ class App(QMainWindow):
             self.map.draw()
         except:
             pass
+
+    def changeColor(self, zen=None):
+        zen = zen or self.zen
+        color = zen.ChannelColors[self.channel]
+        for i in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot, self.yzplot):
+            i.plt[0].set_color(color)
+
+        self.rdbch.changeOptions(zen.ChannelNames, zen.ChannelColorsHex)
 
     def calibrate(self, *args, **kwargs):
         self.calibbtn.setEnabled(False)
@@ -433,20 +450,21 @@ class App(QMainWindow):
             self.conf[self.cmstr].theta = self.theta
             self.conf.maxStep = self.maxStep
 
-    def confopen(self, f):
+    def confopen(self, f, zen=None):
+        zen = zen or self.zen
         if not isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
             f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if f:
             self.conf.filename = f
-            if self.cmstr in self.conf:
-                if 'q' in self.conf[self.cmstr]:
-                    self.q = self.conf[self.cmstr].q
+            if self.getCmstr(zen) in self.conf:
+                if 'q' in self.conf[self.getCmstr(zen)]:
+                    self.q = self.conf[self.getCmstr(zen)].q
                     for i in range(9):
                         self.edt[i].setText('{}'.format(self.q[i]))
 
-                if 'theta' in self.conf[self.cmstr]:
-                    self.theta = self.conf[self.cmstr].theta
+                if 'theta' in self.conf[self.getCmstr(zen)]:
+                    self.theta = self.conf[self.getCmstr(zen)].theta
                     self.thetafld.setText('{}'.format(self.theta))
 
             if 'maxStep' in self.conf:
@@ -476,22 +494,30 @@ class App(QMainWindow):
         self.theta = float(val)
 
     def changechannel(self, val):
-        if val=='R':
-            self.channel = 0
-        else:
-            self.channel = 1
-        self.confopen(self.conf.filename)
+        if len(val):
+            # self.channel = [int(v) for v in val]
+            self.channel = int(val[0])
+            self.confopen(self.conf.filename)
 
     def changeDL(self, *args):
         #Upon change of duolink filterblock
         self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+
+    def changeFeedbackMode(self, idx):
+        self.feedbackMode = idx
 
     def tglcenterbox(self):
         self.zen.EnableEvent('LeftButtonDown')
 
     @property
     def cmstr(self):
-        return self.cyllensdrp[self.channel].currentText()+self.zen.MagStr
+        camera = self.zen.CameraFromChannelName(self.zen.ChannelNames[self.channel])
+        return self.cyllensdrp[camera].currentText()+self.zen.MagStr
+
+    def getCmstr(self, zen=None):
+        zen = zen or self.zen
+        camera = zen.CameraFromChannelName(zen.ChannelNames[self.channel])
+        return self.cyllensdrp[camera].currentText()+zen.MagStr
 
     def closeEvent(self, *args, **kwargs):
         self.setquit()
@@ -553,6 +579,7 @@ class App(QMainWindow):
             self.NameSpace.fastMode = fastMode
             self.NameSpace.run = True
             self.NameSpace.limits = self.limits
+            self.NameSpace.feedbackMode = self.feedbackMode
 
             FS = Z.FrameSize
             self.rectangle = Z.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
@@ -702,18 +729,28 @@ class App(QMainWindow):
 class RadioButtons(QWidget):
     def __init__(self, txt, init_state=0, callback=None):
         QWidget.__init__(self)
-        layout = QGridLayout()
-        self.setLayout(layout)
-        self.callback = callback
-        self.state = txt[init_state]
+        self.layout = QGridLayout()
         self.radiobutton = []
+        self.callback = callback
+        self.setLayout(self.layout)
+        self.state = txt[init_state]
         for i, t in enumerate(txt):
             self.radiobutton.append(QRadioButton(t))
             if i == init_state:
                 self.radiobutton[-1].setChecked(True)
             self.radiobutton[-1].text = t
             self.radiobutton[-1].toggled.connect(self.onClicked)
-            layout.addWidget(self.radiobutton[-1], 0, i)
+            self.layout.addWidget(self.radiobutton[-1], 0, i)
+
+    def changeOptions(self, txt, colors):
+        n = len(txt)
+        for i, rdb in enumerate(self.radiobutton):
+            rdb.setEnabled(i<n)
+            rdb.setVisible(i<n)
+
+        for rdb, t, color in zip(self.radiobutton, txt, colors):
+            rdb.setText(t)
+            rdb.setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
 
     def onClicked(self):
         radioButton = self.sender()
@@ -728,6 +765,54 @@ class RadioButtons(QWidget):
                 r.setChecked(True)
             else:
                 r.setChecked(False)
+
+    def changeColor(self, n, color):
+        try:
+            self.radiobutton[n].setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
+        except:
+            pass
+
+class CheckBoxes(QWidget):
+    def __init__(self, txt, init_state=[], callback=None):
+        QWidget.__init__(self)
+        self.layout = QGridLayout()
+        self.radiobutton = []
+        self.callback = callback
+        self.setLayout(self.layout)
+        self.state = [txt[i] for i in init_state]
+        for i, t in enumerate(txt):
+            self.radiobutton.append(QCheckBox(t))
+            if i in init_state:
+                self.radiobutton[-1].setChecked(True)
+            self.radiobutton[-1].text = t
+            self.radiobutton[-1].toggled.connect(self.onClicked)
+            self.layout.addWidget(self.radiobutton[-1], 0, i)
+
+    def changeOptions(self, txt, colors):
+        n = len(txt)
+        for i, rdb in enumerate(self.radiobutton):
+            rdb.setEnabled(i<n)
+            rdb.setVisible(i<n)
+
+        for rdb, t, color in zip(self.radiobutton, txt, colors):
+            rdb.setText(t)
+            rdb.setStyleSheet("QCheckBox\n{\nbackground-color : " + color + "\n}")
+
+    def onClicked(self):
+        radioButton = self.sender()
+        if radioButton.isChecked():
+            self.state.append(radioButton.text)
+        else:
+            self.state.remove(radioButton.text)
+        print(self.state)
+        if not self.callback is None:
+            self.callback(self.state)
+
+    def changeColor(self, n, color):
+        try:
+            self.radiobutton[n].setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
+        except:
+            pass
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
@@ -753,8 +838,11 @@ class SubPlot:
         canvas.subplot.append(self)
         self.canvas = canvas
 
-    def append_plot(self, linespec='-b'):
-        self.plt.append(self.ax.plot([], linespec)[0])
+    def append_plot(self, linespec='-b', color=None):
+        if color is None:
+            self.plt.append(self.ax.plot([], linespec)[0])
+        else:
+            self.plt.append(self.ax.plot([], linespec, color=color)[0])
 
     def append_data(self, x, y=None, N=0):
         if y is None:
