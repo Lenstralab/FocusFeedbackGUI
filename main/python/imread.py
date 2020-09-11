@@ -39,15 +39,15 @@ class imread(CziFile):
             'AcquisitionBlock']['AcquisitionModeSetup']['ScalingX']
         self.deltaz = 1e6 * self.metadata(False)['ImageDocument']['Metadata']['Experiment']['ExperimentBlocks'][
             'AcquisitionBlock']['AcquisitionModeSetup']['ScalingZ'] / (self.immersionN**2/1.33**2)
-        self.laserwavelengths = [int(1e9 * i['Wavelength']) for i in
-                                 self.metadata(False)['ImageDocument']['Metadata']['Experiment']['ExperimentBlocks'][
-                                     'AcquisitionBlock']['MultiTrackSetup']['TrackSetup']['Attenuators']['Attenuator']]
+        # self.laserwavelengths = [int(1e9 * i['Wavelength']) for i in
+        #                          self.metadata(False)['ImageDocument']['Metadata']['Experiment']['ExperimentBlocks'][
+        #                              'AcquisitionBlock']['MultiTrackSetup']['TrackSetup']['Attenuators']['Attenuator']]
         self.detector = [int(findall('(?<=Detector:\d:)\d', i['Id'])[0]) for i in
                          self.metadata(False)['ImageDocument']['Metadata']['Information']['Instrument']['Detectors'][
                              'Detector']]
-        self.optovar = [float(findall('\d,\d', self.metadata(False)['ImageDocument']['Metadata']['Experiment'][
-            'ExperimentBlocks']['AcquisitionBlock']['MultiTrackSetup']['TrackSetup']['TubeLensPosition'])[0].replace(
-            ',', '.'))]
+        # self.optovar = [float(findall('\d,\d', self.metadata(False)['ImageDocument']['Metadata']['Experiment'][
+        #     'ExperimentBlocks']['AcquisitionBlock']['MultiTrackSetup']['TrackSetup']['TubeLensPosition'])[0].replace(
+        #     ',', '.'))]
 
         # should get this from somewhere else
         m = self.extrametadata

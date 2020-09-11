@@ -3,7 +3,7 @@ import pythoncom
 import numpy as np
 from re import search
 from time import sleep
-import inspect
+from threading import get_ident
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
@@ -42,19 +42,72 @@ def cst(str):
 class zen:
     def __init__(self, EventHandler=None):
         self.EventHandler = EventHandler
-        self.ConnectZEN()
+        self._ID = {}
+        # pythoncom.CoInitialize()
+        # id = get_ident()
+        # ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
+        # if self.EventHandler is None:
+        #     VBA = win32com.client.Dispatch('Lsm5Vba.Application')
+        # else:
+        #     VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
+        # self._ID = {id: (ZEN, VBA)}
+        # #self.AimImage = win32com.client.Dispatch('AimImage.Image')
+        # #self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
+        # self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
+        # self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
+
         self.ProgressCoord = self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates
         self.LastProgressCoord = self.ProgressCoord()
         #self.VBA.Lsm5.Hardware().CpFocus().ConnectHrzToFocus = False
         self.SetAnalogMode(True)
         self.SetExtendedRange(False)
 
-        curf = inspect.currentframe()
-        calf = inspect.getouterframes(curf, 2)
+    def __enter__(self):
+        return self
 
-        f = open('D:\CyllensGUI\z.txt', 'a')
-        f.write('caller name: {}\n'.format(calf[1][3]))
-        f.close()
+    def __exit__(self, *args, **kargs):
+        pass
+        # id = get_ident()
+        # if len(self._ID)==1:
+        #     self.SetAnalogMode(False)
+        #     print('closing last zen')
+        # if id in self._ID:
+        #     self._ID[id][0] = None
+        #     self._ID[id][1] = None
+        #     self._ZEN.pop(id)
+
+    @property
+    def ZEN(self):
+        id = get_ident()
+        if not id in self._ID:
+            self.reConnect()
+        return self._ID[id][0]
+
+    @property
+    def VBA(self):
+        id = get_ident()
+        if not id in self._ID:
+            self.reConnect()
+        return self._ID[id][1]
+
+    def reConnect(self):
+        id = get_ident()
+        pythoncom.CoInitialize()
+        try:
+            ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.ZENid, pythoncom.IID_IDispatch))
+            VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.VBAid, pythoncom.IID_IDispatch))
+            self._ID[id] = (ZEN, VBA)
+        except:
+            ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
+            if self.EventHandler is None:
+                VBA = win32com.client.Dispatch('Lsm5Vba.Application')
+            else:
+                VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
+            self._ID[id] = (ZEN, VBA)
+            # self.AimImage = win32com.client.Dispatch('AimImage.Image')
+            # self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
+            self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
+            self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
 
     @property
     def ready(self):
@@ -75,18 +128,6 @@ class zen:
     def ZDL(self, val):
         global zendrawinglist
         zendrawinglist = val
-
-    def reconnect(fun):
-        def f(self, *args):
-            try:
-                return fun(self, *args)
-            except:
-                # print('reconnecting...')
-                self.ZEN = None
-                self.VBA = None
-                self.ConnectZEN()
-                return fun(self, *args)
-        return f
 
     def EnableEvent(self, event):
         if self.ready:
@@ -140,22 +181,10 @@ class zen:
     def pxsize(self):
         return 1e9*self.ZEN.GUI.Document.DsRecordingDoc.VoxelSizeX
 
-    def ConnectZEN(self):
-        pythoncom.CoInitialize()
-        self.ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
-        if self.EventHandler is None:
-            self.VBA = win32com.client.Dispatch('Lsm5Vba.Application')
-        else:
-            self.VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
-        #self.AimImage = win32com.client.Dispatch('AimImage.Image')
-        #self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
-        self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
-        self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
-
-    def DisconnectZEN(self):
-        self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
-        self.ZEN = None
-        self.VBA = None
+    # def DisconnectZEN(self):
+    #     self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
+    #     self.ZEN = None
+    #     self.VBA = None
 
     def NewThreadZEN(self):
         pythoncom.CoInitialize()
@@ -225,16 +254,20 @@ class zen:
         return np.reshape(ScanDoc.GetSubregion(Channel, X, Y, 0, Time, 1, 1, 1, 1, Sx, Sy, 1, 1, 2)[0], (Sx, Sy)), Time
 
     @property
-    def ChannelColorsHex(self):
+    def ChannelColorsInt(self):
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        return [ScanDoc.ChannelColor(channel) for channel in range(self.nChannels)]
+
+    @property
+    def ChannelColorsHex(self):
         color = []
-        for channel in range(self.nChannels):
-            h = np.base_repr(ScanDoc.ChannelColor(channel), 16, 6)[-6:]
+        for cci in self.ChannelColorsInt:
+            h = np.base_repr(cci, 16, 6)[-6:]
             color.append('#'+h[4:]+h[2:4]+h[:2])
         return color
 
     @property
-    def ChannelColors(self):
+    def ChannelColorsRGB(self):
         return [[int(hcolor[2*i+1:2*(i+1)+1], 16)/255 for i in range(3)] for hcolor in self.ChannelColorsHex]
 
     @property
@@ -301,7 +334,7 @@ class zen:
             self.RemoveDrawing(index)
             return None
 
-    def DrawRectangle(self, X, Y, Sx, Sy, Color=65025, LineWidth=2, index=None):
+    def DrawRectangle(self, X, Y, Sx, Sy, Color=16777215, LineWidth=2, index=None):
         if self.ready and np.all(np.isfinite((X, Y, Sx, Sy))):
             Overlay = self.VBA.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
 

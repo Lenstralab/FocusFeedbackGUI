@@ -44,73 +44,68 @@ class EventHandlerMetaClass(type):
 def EventHandler(CLG):
     class EventHandlerCls(metaclass=EventHandlerMetaClass):
         clg = CLG #reference to app class
+        zen = clg.zen
 
         @thread
         @errwrap
         def OnThrowEvent(self, *args):
-            z = zen()
             if args[0] == cst('LeftButtonDown') and self.clg.centerbox.isChecked():
                 #print(('OnThrowEvent:', args))
-                X = z.MousePosition
-                FS = z.FrameSize
-                pxsize = z.pxsize
+                X = self.zen.MousePosition
+                FS = self.zen.FrameSize
+                pxsize = self.zen.pxsize
                 Pos = self.clg.conf.ROIPos
                 d = [(FS[i]/2 - X[i] + Pos[i]) * pxsize/1000 for i in range(2)]
                 d[1] *= -1
-                z.MoveStageRel(*d)
-            z.DisconnectZEN()
+                self.zen.MoveStageRel(*d)
 
         @thread
         @errwrap
         def OnThrowPropertyEvent(self, *args):
-            z = zen()
             # print(('OnThrowProperyEvent:', args))
 
             #make sure lmb event is enabled on a new document
-            if self.clg.curzentitle != z.Title:
-                self.clg.curzentitle = z.Title
-                z.EnableEvent('LeftButtonDown')
+            if self.clg.curzentitle != self.zen.Title:
+                self.clg.curzentitle = self.zen.Title
+                self.zen.EnableEvent('LeftButtonDown')
 
                 #draw a black rectangle in the map when a new document is saved
-                if z.FileName[-4:] == '.czi':
-                    LP = z.StagePos
-                    FS = z.FrameSize
-                    pxsize = z.pxsize
+                if self.zen.FileName[-4:] == '.czi':
+                    LP = self.zen.StagePos
+                    FS = self.zen.FrameSize
+                    pxsize = self.zen.pxsize
                     self.clg.map.append_data_docs(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
                     self.clg.map.draw()
                 registereventwithdelay('LeftButtonDown', 2)
 
-            if args[1] == 'TransmissionSpot' and self.clg.MagStr != z.MagStr:
-                self.clg.MagStr = z.MagStr
+            if args[1] == 'TransmissionSpot' and self.clg.MagStr != self.zen.MagStr:
+                self.clg.MagStr = self.zen.MagStr
                 self.clg.confopen(self.clg.conf.filename)
-            elif args[1] == '2C_FilterSlider' and self.clg.DLFilter != z.DLFilter:
-                self.clg.DLFilter = z.DLFilter
-                self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[z.DLFilter])
-                self.clg.chdlf.changeState(z.DLFilter)
+            elif args[1] == '2C_FilterSlider' and self.clg.DLFilter != self.zen.DLFilter:
+                self.clg.DLFilter = self.zen.DLFilter
+                self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+                self.clg.chdlf.changeState(self.zen.DLFilter)
             elif args[1] == 'Stage':
-                LP = z.StagePos
-                FS = z.FrameSize
-                pxsize = z.pxsize
+                LP = self.clg.zen.StagePos
+                FS = self.zen.FrameSize
+                pxsize = self.zen.pxsize
                 self.clg.map.numel_data(LP[0]/1000, LP[1]/1000, FS[0]*pxsize/1e6, FS[1]*pxsize/1e6)
                 self.clg.map.draw()
             elif args[1] in ('DataColorPalette', 'FramesPerStack'):
-                self.clg.changeColor(z)
-            z.DisconnectZEN()
+                self.clg.changeColor()
 
     return EventHandlerCls
 
 @thread
 def events(clg):
-    z = zen(EventHandler(clg))
-    z.EnableEvent('LeftButtonDown')
-
-    while not clg.quit:
-        sleep(.01)
-        pythoncom.PumpWaitingMessages()
+    with zen(EventHandler(clg)) as z:
+        z.EnableEvent('LeftButtonDown')
+        while not clg.quit:
+            sleep(.01)
+            pythoncom.PumpWaitingMessages()
 
 @thread
 def registereventwithdelay(event, delay):
     sleep(delay)
-    z = zen()
-    z.EnableEvent(event)
-    z.DisconnectZEN()
+    with zen() as z:
+        z.EnableEvent(event)

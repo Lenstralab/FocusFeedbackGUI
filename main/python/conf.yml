@@ -5,6 +5,19 @@ dataDir: 'd:\data' #where to find the czi to attach the pzl to
 tmpPzlFile: 'd:\tmp\tmp.pzl'
 fastMode: False #fast fitting
 gain: 5e-3 #gain for PID mode
+style: >
+  QMainWindow { background-color: #454D62 }
+  QWidget { background-color: #454D62 }
+  QCheckBox { color: #FFFFFF }
+  QPushButton { color: #FFFFFF }
+  QLineEdit { color: #FFFFFF }
+  QLabel { color: #FFFFFF }
+  QComboBox { color: #FFFFFF }
+  QMenu { color: #FFFFFF }
+  QMenuBar { color: #FFFFFF }
+  QTabWidget { border-color: #454D62 }
+  QTabBar::tab { background-color: #262E3E; color: #FFFFFF }
+  QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF }
 
 A100x10:
   q: [1.11350728, -0.11643823,  0.15658226,  1.26478436,  0.48382135,  0.41210216,  3.73683468, 21.41761362,  0.97043002]

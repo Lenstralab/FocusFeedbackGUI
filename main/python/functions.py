@@ -76,21 +76,23 @@ def fitgauss(im, theta=0, fastmode=False):
     """
     xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)))
     r = 5
-    jm = crop(im, (xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))
+    cr = np.round(((xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))).astype('int')
+    jm = crop(im, *cr)
     p = fitgaussint(jm, theta)
     if fastmode: # Only use moment analysis
         q = p
-        s = r
+        cs = cr
         S = np.shape(jm)
         xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
     else: # Full fitting
         if (p[2] > 8) | (p[3] < 0.1):
             return np.full(7, np.nan), np.nan
-        p[0:2] += (xy - r)
+        p[0:2] += cr[:, 0]
         s = 2 * np.ceil(p[2])
-        jm = crop(im, (p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))
+        cs = np.round(((p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))).astype('int')
+        jm = crop(im, *cs)
         S = np.shape(jm)
-        p[0:2] -= (xy - s)
+        p[0:2] -= cs[:, 0]
         xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
         g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv))**2)
 
@@ -101,7 +103,7 @@ def fitgauss(im, theta=0, fastmode=False):
     q = np.append(q, theta)
     q[5] = np.abs(q[5])
     r2 = 1 - np.nansum((jm-gaussian7grid(q, xv, yv))**2) / np.nansum((jm-np.nanmean(jm))**2)
-    q[0:2] += (xy - s)
+    q[0:2] += cs[:, 0]
 
     return q, r2
 
@@ -133,7 +135,7 @@ def fitgaussint(im, theta):
     cos, sin = np.cos(theta), np.sin(theta)
     x, y = cos*(x-q[0])-(y-q[1])*sin, cos*(y-q[1])+(x-q[0])*sin
 
-    s2 = np.nansum((im-q[4])**2)
+    s2 = np.nansum(jm**2)
     sx = np.sqrt(np.nansum((x*jm)**2)/s2)
     sy = np.sqrt(np.nansum((y*jm)**2)/s2)
 
@@ -234,9 +236,9 @@ def ffind(expr, *args, **kwargs):
             folder = i
 
     for key, value in kwargs.items():
-        if key is 'once':
+        if key == 'once':
             once = value
-        elif key is 'directory':
+        elif key == 'directory':
             directory = value
 
     if not 'rec' in vars().keys():
