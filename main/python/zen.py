@@ -4,6 +4,7 @@ import numpy as np
 from re import search
 from time import sleep
 from threading import get_ident
+import inspect
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
@@ -42,23 +43,10 @@ def cst(str):
 class zen:
     def __init__(self, EventHandler=None):
         self.EventHandler = EventHandler
+        self._ZEN_VBA = {}
         self._ID = {}
-        # pythoncom.CoInitialize()
-        # id = get_ident()
-        # ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
-        # if self.EventHandler is None:
-        #     VBA = win32com.client.Dispatch('Lsm5Vba.Application')
-        # else:
-        #     VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
-        # self._ID = {id: (ZEN, VBA)}
-        # #self.AimImage = win32com.client.Dispatch('AimImage.Image')
-        # #self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
-        # self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
-        # self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
-
         self.ProgressCoord = self.VBA.Lsm5.ExternalDsObject().ScanController().GetProgressCoordinates
         self.LastProgressCoord = self.ProgressCoord()
-        #self.VBA.Lsm5.Hardware().CpFocus().ConnectHrzToFocus = False
         self.SetAnalogMode(True)
         self.SetExtendedRange(False)
 
@@ -66,8 +54,17 @@ class zen:
         return self
 
     def __exit__(self, *args, **kargs):
-        pass
-        # id = get_ident()
+        self.close()
+
+    def close(self):
+        id = get_ident()
+        if id in self._ZEN_VBA:
+            ZEN, VBA = self._ZEN_VBA.pop(id)
+            del ZEN, VBA
+        if id in self._ID:
+            ID = self._ID.pop(id)
+            del ID
+
         # if len(self._ID)==1:
         #     self.SetAnalogMode(False)
         #     print('closing last zen')
@@ -78,36 +75,47 @@ class zen:
 
     @property
     def ZEN(self):
-        id = get_ident()
-        if not id in self._ID:
-            self.reConnect()
-        return self._ID[id][0]
+        return self.reconnect()[0]
 
     @property
     def VBA(self):
-        id = get_ident()
-        if not id in self._ID:
-            self.reConnect()
-        return self._ID[id][1]
+        return self.reconnect()[1]
 
-    def reConnect(self):
+    def reconnect(self):
         id = get_ident()
-        pythoncom.CoInitialize()
-        try:
-            ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.ZENid, pythoncom.IID_IDispatch))
-            VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.VBAid, pythoncom.IID_IDispatch))
-            self._ID[id] = (ZEN, VBA)
-        except:
-            ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
-            if self.EventHandler is None:
-                VBA = win32com.client.Dispatch('Lsm5Vba.Application')
-            else:
-                VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler)
-            self._ID[id] = (ZEN, VBA)
-            # self.AimImage = win32com.client.Dispatch('AimImage.Image')
-            # self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
-            self.ZENid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.ZEN)
-            self.VBAid = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.VBA)
+        if not id in self._ZEN_VBA:
+            pythoncom.CoInitialize()
+            success = False
+            for ZENid, VBAid in self._ID.values(): #First try comarshalling
+                try:
+                    ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(ZENid, pythoncom.IID_IDispatch))
+                    VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(VBAid, pythoncom.IID_IDispatch))
+                    success = True
+                    with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
+                        f.write('----------')
+                        f.write('coinit {}: {}\n'.format(id, len(self._ID)))
+                        for i in inspect.stack()[2:15]:
+                            f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
+                    break
+                except:
+                    continue
+            if not success:
+                with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
+                    f.write('----------')
+                    f.write('reconnect {}: {}\n'.format(id, len(self._ID)))
+                    for i in inspect.stack()[2:15]:
+                        f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
+                ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
+                if self.EventHandler is None:
+                    VBA = win32com.client.Dispatch('Lsm5Vba.Application')
+                else:
+                    VBA = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.EventHandler(self))
+                self._ID[id] = (pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, ZEN),
+                                pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, VBA))
+            self._ZEN_VBA[id] = (ZEN, VBA)
+        return self._ZEN_VBA[id]
+        # self.AimImage = win32com.client.Dispatch('AimImage.Image')
+        # self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
 
     @property
     def ready(self):
@@ -180,16 +188,6 @@ class zen:
     @property
     def pxsize(self):
         return 1e9*self.ZEN.GUI.Document.DsRecordingDoc.VoxelSizeX
-
-    # def DisconnectZEN(self):
-    #     self.VBA.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(0)
-    #     self.ZEN = None
-    #     self.VBA = None
-
-    def NewThreadZEN(self):
-        pythoncom.CoInitialize()
-        self.VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.VBAid, pythoncom.IID_IDispatch))
-        self.ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(self.ZENid, pythoncom.IID_IDispatch))
 
     def SaveDouble(self, name, value):
         self.ZEN.SetDouble(name, value)

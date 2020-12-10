@@ -1,6 +1,23 @@
 import os
 import numpy as np
+from threading import Thread
+from parfor import parfor
 
+threads = []
+def thread(fun):
+    """ decorator to run function in a separate thread to keep the gui responsive
+    """
+    def tfun(*args, **kwargs):
+        T = Thread(target=fun, args=args, kwargs=kwargs)
+        threads.append(T)
+        T.start()
+        # return T
+    return tfun
+
+def close_threads():
+    print('Joining {} threads.'.format(len(threads)))
+    for T in threads:
+        T.join()
 
 def mkdir(path):
     """ recursively make directory if it doesn't exist already

@@ -5,8 +5,8 @@ from shutil import copyfile
 from time import sleep, time
 from datetime import datetime
 from functools import partial
-from threading import Thread
 from multiprocessing import Process, Queue, Manager, freeze_support
+from threading import Thread
 from parfor import parpool
 from PyQt5.QtWidgets import *
 
@@ -16,6 +16,7 @@ from fbs_runtime.application_context.PyQt5 import ApplicationContext
 import QGUI
 import cylinderlens as cyl
 import functions, config
+from utilities import thread, close_threads
 from events import events
 from pid import pid
 from zen import zen
@@ -26,17 +27,6 @@ def firstargonly(fun):
     """ decorator that only passes the first argument to a function
     """
     return lambda *args: fun(args[0])
-
-threads = []
-def thread(fun):
-    """ decorator to run function in a separate thread to keep the gui responsive
-    """
-    def tfun(*args, **kwargs):
-        T = Thread(target=fun, args=args, kwargs=kwargs)
-        threads.append(T)
-        T.start()
-        return T
-    return tfun
 
 def feedbackloop(Queue, NameSpace):
     # this is run in a separate process
@@ -62,7 +52,7 @@ def feedbackloop(Queue, NameSpace):
             FS = Z.FrameSize
             TimeMem = 0
             detected = functions.truncated_list(5, (True,)*5)
-            cur_channel_idx = channels[0]
+            zmem = {}
 
             if mode == 'pid':
                 P = pid(0, G, maxStep, TimeInterval, gain)
@@ -118,17 +108,22 @@ def feedbackloop(Queue, NameSpace):
                             if Pz > (G + 5):
                                 P = pid(0, G, maxStep, TimeInterval, gain)
                     else:
-                        z = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep) for channel, e in ellipticity.items()}
-                        if np.any(np.isfinite(list(z.values()))):
+                        dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep) for channel, e in ellipticity.items()}
+                        cur_channel_idx = TTime % len(channels)
+                        next_channel_idx = (TTime + 1) % len(channels)
+                        if np.any(np.isfinite(list(dz.values()))):
                             if feedbackMode == 0: #Average
-                                z = np.nanmean(list(z.values()))
-                            else: #Alternate
-                                z = z[channels[cur_channel_idx]]
-                            if not np.isnan(z):
-                                Z.MovePiezoRel(-z)
-
-                    cur_channel_idx += 1
-                    cur_channel_idx %= len(channels)
+                                dz = np.nanmean(list(dz.values()))
+                                if not np.isnan(dz):
+                                    # Z.MovePiezoRel(-dz)
+                                    Z.PiezoPos -= dz
+                            else: #Alternate: save focus in current channel, apply focus to piezo for next channel
+                                if np.isfinite(dz[channels[cur_channel_idx]]):
+                                    zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]]
+                                elif not channels[cur_channel_idx] in zmem:
+                                    zmem[channels[cur_channel_idx]] = PiezoPos
+                                if channels[next_channel_idx] in zmem:
+                                    Z.PiezoPos = zmem[channels[next_channel_idx]]
 
                     # Wait for next frame:
                     while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
@@ -164,7 +159,7 @@ class App(QMainWindow):
         self.theta = {}
 
         self.feedbackMode = 0  # Average, 1: Alternate
-        self.channels = [1]
+        self.channels = [0]
 
         self.ellipse = {}
         self.rectangle = None
@@ -567,9 +562,9 @@ class App(QMainWindow):
                         plot.append_plot(channel, '.', self.zen.ChannelColorsRGB[channel])
 
                 limits[channel] = [[-np.inf, np.inf]] * 8
-                limits[channel][2] = [sigma[channel]/3, sigma[channel]*3] #fraction of fwhm
+                limits[channel][2] = [fwhm[channel]/3, fwhm[channel]*3] #fraction of fwhm
                 limits[channel][5] = [0.7, 1.3]
-                limits[channel][7] = [-2, np.inf]
+                limits[channel][7] = [0, np.inf]
 
             #Experiment has started:
             self.NameSpace.mode = self.rdb.state.lower()
@@ -725,11 +720,7 @@ class App(QMainWindow):
         self.setstop()
         self.quit = True
         self.NameSpace.quit = True
-
-        for T in threads:
-            print(T)
-            T.join()
-
+        close_threads()
         self.fblprocess.join(5)
         self.fblprocess.terminate()
 

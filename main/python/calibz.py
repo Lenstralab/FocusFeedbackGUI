@@ -50,7 +50,7 @@ def fitzhuangint(z, s):
 
 def fitzhuang(z, s, ds, rec=True):
     z, s, ds = utilities.rmnan(z, s, ds)
-    if z.size is 0:
+    if z.size == 0:
         return np.full(5, np.nan), np.full(5, np.nan), (np.nan, np.nan)
     p = fitzhuangint(z, s)
     g = lambda pf: np.nansum((s - zhuang_fun(z, pf)) ** 2 / ds ** 2)
