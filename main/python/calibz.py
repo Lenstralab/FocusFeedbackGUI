@@ -152,7 +152,7 @@ def calibz(im):
         im = imread(im)
 
     pdfpath = os.path.splitext(im.path)[0] + '_Cyllens_calib.pdf'
-    utilities.mkdir(os.path.split(pdfpath)[0])
+    os.makedirs(os.path.split(pdfpath)[0], exist_ok=True)
     pdf = PdfPages(pdfpath)
 
     a = localisation.detect_points_sf(im.maxz(1), .35 / im.NA / im.pxsize)

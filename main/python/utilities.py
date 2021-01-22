@@ -1,7 +1,6 @@
 import os
 import numpy as np
 from threading import Thread
-from parfor import parfor
 
 threads = []
 def thread(fun):
@@ -19,14 +18,13 @@ def close_threads():
     for T in threads:
         T.join()
 
-def mkdir(path):
-    """ recursively make directory if it doesn't exist already
-        wp@tl20190910
-    """
-    if not os.path.exists(path):
-        mkdir(os.path.split(path)[0])
-        os.mkdir(path)
-
+def errwrap(fun):
+    def e(*args, **kwargs):
+        try:
+            return fun(*args, **kwargs)
+        except:
+            return None
+    return e
 
 def fixpar(N, fix):
     """ Returns a function which will add fixed parameters in fix into an array
@@ -113,9 +111,7 @@ def rmnan(*a):
         for i in range(len(a)):
             if hasattr(a[i], "__getitem__"):
                 for j in reversed(idx):
-                    if isinstance(a[i], tuple):
-                        a[i] = deltuple(a[i], j)
-                    elif isinstance(a[i], np.ndarray):
+                    if isinstance(a[i], np.ndarray):
                         a[i] = np.delete(a[i], j)
                     else:
                         del a[i][j]
@@ -150,13 +146,3 @@ def findrange(x, s):
         return x[i] + s / 2
     else:
         return x[i - l] - s / 2
-
-
-def errwrap(fun, default, *args):
-    """ Run a function fun, and when an error is caught return the default value
-        wp@tl20190321
-    """
-    try:
-        return fun(*args)
-    except:
-        return default

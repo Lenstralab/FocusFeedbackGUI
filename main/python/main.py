@@ -150,7 +150,6 @@ class App(QMainWindow):
         self.stop = False # Stop (waiting for) experiment
         self.quit = False # Quit program
         self.conf = config.conf()
-        self.curzentitle = ''
 
         self.zen = zen()
 
@@ -562,7 +561,7 @@ class App(QMainWindow):
                         plot.append_plot(channel, '.', self.zen.ChannelColorsRGB[channel])
 
                 limits[channel] = [[-np.inf, np.inf]] * 8
-                limits[channel][2] = [fwhm[channel]/3, fwhm[channel]*3] #fraction of fwhm
+                limits[channel][2] = [fwhm[channel]/2, fwhm[channel]*2] #fraction of fwhm
                 limits[channel][5] = [0.7, 1.3]
                 limits[channel][7] = [0, np.inf]
 

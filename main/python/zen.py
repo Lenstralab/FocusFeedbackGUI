@@ -137,13 +137,24 @@ class zen:
         global zendrawinglist
         zendrawinglist = val
 
-    def EnableEvent(self, event):
-        if self.ready:
-            self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), True)
+    @property
+    def CurrentDoc(self):
+        return self.VBA.Lsm5.DsRecordingActiveDocObject
 
-    def DisableEvent(self, event):
-        if self.ready:
-            self.VBA.Lsm5.DsRecordingActiveDocObject.EnableImageWindowEvent(cst(event), False)
+    def EnableEvent(self, event, doc=None):
+        doc = doc or self.CurrentDoc
+        for i in range(25):
+            if not doc is None:
+                break
+            sleep(0.2)
+            doc = self.CurrentDoc
+        doc.EnableImageWindowEvent(cst(event), True)
+
+    def DisableEvent(self, event, doc=''):
+        if doc == '':
+            doc = self.CurrentDoc
+        if not doc is None:
+            doc.EnableImageWindowEvent(cst(event), False)
 
     @property
     def IsBusy(self):
