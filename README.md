@@ -1,12 +1,5 @@
-CylLensGUI
+![cyllensgui icon](Icon.ico)
 
-requirements:
+# Cylindrical Lens GUI
+Gui to live track single particles. Written for Zeiss' Zen Black software.
 
-Python 3.7
-Python packages:    sys, os, time, functools, threading, multiprocessing, numpy,
-                    PyQt5, fbs_runtime, matplotlib, yaml, scipy, pythoncom,
-                    numba, win32com, re
-                    
-build using fman build system: fbs freeze
-
-https://github.com/mherrmann/fbs-tutorial

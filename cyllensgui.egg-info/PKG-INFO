@@ -1,0 +1,20 @@
+Metadata-Version: 2.1
+Name: cyllensgui
+Version: 2021.6.8
+Summary: Live track particles.
+Home-page: UNKNOWN
+Author: Wim Pomp @ Lenstra lab NKI
+Author-email: w.pomp@nki.nl
+License: UNKNOWN
+Description: ![cyllensgui icon](Icon.ico)
+        
+        # Cylindrical Lens GUI
+        Gui to live track single particles. Written for Zeiss' Zen Black software.
+        
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown

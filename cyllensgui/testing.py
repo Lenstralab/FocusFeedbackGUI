@@ -1,4 +1,4 @@
-from zen import zen
+from .zen import zen
 from time import time, sleep
 from matplotlib import pyplot
 import numpy

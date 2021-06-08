@@ -4,14 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_pdf import PdfPages
-import scipy, os, pandas, re, pickle
+import scipy, os, pandas, re
 import trackpy as tp
 from tqdm.auto import trange
 import warnings
 from imread import imread
-import functions, utilities, localisation
-import functools
-import multiprocessing
+from .  import utilities, localisation
 import skimage.filters
 
 

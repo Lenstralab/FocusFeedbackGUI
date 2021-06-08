@@ -1,7 +1,7 @@
 import yaml
 import os
 import re
-from functions import ffind
+from .functions import ffind
 
 #fix loading scientific notation without decimal separator
 loader = yaml.SafeLoader

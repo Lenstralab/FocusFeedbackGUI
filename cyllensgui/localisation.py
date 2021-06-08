@@ -2,11 +2,11 @@ import numpy as np
 import scipy
 import skimage
 import pandas
-import utilities
-import functions2 as functions
+from . import utilities
+from . import functions2 as functions
 import nbhelpers as nb
 import skimage.feature
-from parallel import pmap
+from parfor import pmap
 import matplotlib.pyplot as plt
 
 

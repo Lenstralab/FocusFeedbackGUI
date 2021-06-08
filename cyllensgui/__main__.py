@@ -11,15 +11,14 @@ from parfor import parpool
 from PyQt5.QtWidgets import *
 
 import numpy as np
-from fbs_runtime.application_context.PyQt5 import ApplicationContext
 
-import QGUI
-import cylinderlens as cyl
-import functions, config
-from utilities import thread, close_threads
-from events import events
-from pid import pid
-from zen import zen
+from . import QGUI
+from . import cylinderlens as cyl
+from . import functions, config
+from .utilities import thread, close_threads
+from .events import events
+from .pid import pid
+from .zen import zen
 
 np.seterr(all='ignore');
 
@@ -723,13 +722,12 @@ class App(QMainWindow):
         self.fblprocess.join(5)
         self.fblprocess.terminate()
 
-class AppContext(ApplicationContext):           # 1. Subclass ApplicationContext
-    def run(self):                              # 2. Implement run()
-        window = App()
-        return self.app.exec_()
+
+def main():
+    freeze_support()  # to enable fbs/pyinstaller to work with multiprocessing
+    app = QApplication([])
+    window = App()
+    exit(app.exec())
 
 if __name__ == '__main__':
-    freeze_support()                            # to enable fbs/pyinstaller to work with multiprocessing
-    appctxt = AppContext()                      # 4. Instantiate the subclass
-    exit_code = appctxt.run()                   # 5. Invoke run()
-    exit(exit_code)
+    main()

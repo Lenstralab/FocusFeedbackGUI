@@ -1,14 +1,14 @@
 import numpy as np
 import scipy.optimize
 import scipy.ndimage
-import utilities
+from . import utilities
 import functools
 import multiprocessing
 import trackpy
 import pandas
 import skimage.filters
 from imread import imread
-from parallel import parfor
+from parfor import parfor
 
 
 def sliding_mean(X, data, sig, width, x):

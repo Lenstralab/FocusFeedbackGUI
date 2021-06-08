@@ -1,8 +1,8 @@
 import pythoncom
 from functools import partial
 from time import sleep
-from zen import zen, cst
-from utilities import thread, errwrap
+from .zen import zen, cst
+from .utilities import thread, errwrap
 from dataclasses import dataclass
 
 class EventHandlerMetaClass(type):
