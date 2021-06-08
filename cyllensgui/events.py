@@ -1,9 +1,14 @@
 import pythoncom
 from functools import partial
 from time import sleep
-from .zen import zen, cst
-from .utilities import thread, errwrap
 from dataclasses import dataclass
+
+if __package__ == '':
+    from zen import zen, cst
+    from utilities import thread, errwrap
+else:
+    from .zen import zen, cst
+    from .utilities import thread, errwrap
 
 class EventHandlerMetaClass(type):
     """

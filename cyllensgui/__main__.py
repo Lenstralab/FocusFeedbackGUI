@@ -12,13 +12,22 @@ from PyQt5.QtWidgets import *
 
 import numpy as np
 
-from . import QGUI
-from . import cylinderlens as cyl
-from . import functions, config
-from .utilities import thread, close_threads
-from .events import events
-from .pid import pid
-from .zen import zen
+if __package__ == '':
+    import QGUI
+    import cylinderlens as cyl
+    import functions, config
+    from utilities import thread, close_threads
+    from events import events
+    from pid import pid
+    from zen import zen
+else:
+    from . import QGUI
+    from . import cylinderlens as cyl
+    from . import functions, config
+    from .utilities import thread, close_threads
+    from .events import events
+    from .pid import pid
+    from .zen import zen
 
 np.seterr(all='ignore');
 

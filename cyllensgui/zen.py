@@ -91,20 +91,20 @@ class zen:
                     ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(ZENid, pythoncom.IID_IDispatch))
                     VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(VBAid, pythoncom.IID_IDispatch))
                     success = True
-                    with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
-                        f.write('----------')
-                        f.write('coinit {}: {}\n'.format(id, len(self._ID)))
-                        for i in inspect.stack()[2:15]:
-                            f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
+                    # with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
+                    #     f.write('----------')
+                    #     f.write('coinit {}: {}\n'.format(id, len(self._ID)))
+                    #     for i in inspect.stack()[2:15]:
+                    #         f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
                     break
                 except:
                     continue
             if not success:
-                with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
-                    f.write('----------')
-                    f.write('reconnect {}: {}\n'.format(id, len(self._ID)))
-                    for i in inspect.stack()[2:15]:
-                        f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
+                # with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
+                #     f.write('----------')
+                #     f.write('reconnect {}: {}\n'.format(id, len(self._ID)))
+                #     for i in inspect.stack()[2:15]:
+                #         f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
                 ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
                 if self.EventHandler is None:
                     VBA = win32com.client.Dispatch('Lsm5Vba.Application')

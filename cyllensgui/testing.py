@@ -1,7 +1,11 @@
-from .zen import zen
 from time import time, sleep
 from matplotlib import pyplot
 import numpy
+
+if __package__ == '':
+    from zen import zen
+else:
+    from .zen import zen
 
 def piezotest():
     z = zen()

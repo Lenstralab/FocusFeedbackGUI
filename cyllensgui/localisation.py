@@ -2,13 +2,17 @@ import numpy as np
 import scipy
 import skimage
 import pandas
-from . import utilities
-from . import functions2 as functions
 import nbhelpers as nb
 import skimage.feature
 from parfor import pmap
 import matplotlib.pyplot as plt
 
+if __package__ == '':
+    import utilities
+    import functions2 as functions
+else:
+    from . import utilities
+    from . import functions2 as functions
 
 def crop(im, x, y=None, z=None, m=np.nan):
     """ crops image im, limits defined by min(x)..max(y), when these limits are

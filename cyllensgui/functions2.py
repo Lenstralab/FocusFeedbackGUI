@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.optimize
 import scipy.ndimage
-from . import utilities
 import functools
 import multiprocessing
 import trackpy
@@ -10,6 +9,10 @@ import skimage.filters
 from imread import imread
 from parfor import parfor
 
+if __package__ == '':
+    import utilities
+else:
+    from . import utilities
 
 def sliding_mean(X, data, sig, width, x):
     X = np.array(X)

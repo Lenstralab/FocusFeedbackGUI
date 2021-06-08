@@ -9,9 +9,12 @@ import trackpy as tp
 from tqdm.auto import trange
 import warnings
 from imread import imread
-from .  import utilities, localisation
 import skimage.filters
 
+if __package__ == '':
+    import utilities, localisation
+else:
+    from . import utilities, localisation
 
 def zhuang_fun(z, p):
     """ p: [sigma0,A,B,c,d]

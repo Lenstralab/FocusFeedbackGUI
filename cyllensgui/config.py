@@ -1,7 +1,10 @@
 import yaml
 import os
 import re
-from .functions import ffind
+if __package__ == '':
+    from functions import ffind
+else:
+    from .functions import ffind
 
 #fix loading scientific notation without decimal separator
 loader = yaml.SafeLoader
