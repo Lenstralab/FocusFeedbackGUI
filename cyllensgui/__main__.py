@@ -6,8 +6,7 @@ from time import sleep, time
 from datetime import datetime
 from functools import partial
 from multiprocessing import Process, Queue, Manager, freeze_support
-from threading import Thread
-from parfor import parpool
+# from parfor import parpool
 from PyQt5.QtWidgets import *
 
 import numpy as np
@@ -16,18 +15,20 @@ if __package__ == '':
     import QGUI
     import cylinderlens as cyl
     import functions, config
-    from utilities import thread, close_threads
-    from events import events
+    from utilities import qthread
+    from events import Events
     from pid import pid
     from zen import zen
+    from calibz import calibz
 else:
     from . import QGUI
     from . import cylinderlens as cyl
     from . import functions, config
-    from .utilities import thread, close_threads
-    from .events import events
+    from .utilities import qthread
+    from .events import Events
     from .pid import pid
     from .zen import zen
+    from .calibz import calibz
 
 np.seterr(all='ignore');
 
@@ -69,80 +70,93 @@ def feedbackloop(Queue, NameSpace):
                 channel, Frame = c
                 return functions.fg(Frame, theta[channel], sigma[channel], fastMode)
 
-            with parpool(fitter, (theta, sigma, fastMode), nP=len(channels)) as pool:
-                while Z.ExperimentRunning and (not NameSpace.stop):
-                    ellipticity = {}
-                    PiezoPos = Z.PiezoPos
-                    FocusPos = Z.GetCurrentZ
+            # up to and including TimeMem = Time
+            # with parpool(fitter, (theta, sigma, fastMode), nP=len(channels)) as pool:
+            while Z.ExperimentRunning and (not NameSpace.stop):
+                ellipticity = {}
+                PiezoPos = Z.PiezoPos
+                FocusPos = Z.GetCurrentZ
 
-                    Times = {}
-                    for channel in channels:
-                        STime = time()
-                        Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
-                        pool[channel] = (channel, Frame)
-                        Times[channel] = (STime, Time)
+                # Do not use pool
+                for channel in channels:
+                    STime = time()
+                    Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
+                    a = fitter((channel, Frame), theta, sigma, fastMode)
+                    if Time < TimeMem:
+                        TTime = TimeMem + 1
+                    else:
+                        TTime = Time
 
-                    for channel in channels:
-                        STime, Time = Times[channel]
-                        a = pool[channel]
-                        if Time < TimeMem:
-                            TTime = TimeMem + 1
-                        else:
-                            TTime = Time
+                # Use pool
+                # Times = {}
+                # for channel in channels:
+                #     STime = time()
+                #     Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
+                #     pool[channel] = (channel, Frame)
+                #     Times[channel] = (STime, Time)
+                #
+                # for channel in channels:
+                #     STime, Time = Times[channel]
+                #     a = pool[channel]
+                #     if Time < TimeMem:
+                #         TTime = TimeMem + 1
+                #     else:
+                #         TTime = Time
 
-                        #try to determine when something is detected by using a simple filter on R2, elipticity and psf width
-                        if not any(np.isnan(a)) and all([l[0]<n<l[1] for n, l in zip(a, limits[channel])]):
-                            if sum(detected)/len(detected) > 0.35:
-                                Fitted = True
-                                ellipticity[channel] = a[5]
-                            else:
-                                Fitted = False
-                            detected.append(True)
+                    #try to determine when something is detected by using a simple filter on R2, elipticity and psf width
+                    if not any(np.isnan(a)) and all([l[0]<n<l[1] for n, l in zip(a, limits[channel])]):
+                        if sum(detected)/len(detected) > 0.35:
+                            Fitted = True
+                            ellipticity[channel] = a[5]
                         else:
                             Fitted = False
-                            detected.append(False)
-                        Queue.put((channel, TTime, Fitted, a[:8], PiezoPos, FocusPos, STime))
-
-                    # Update the piezo position:
-                    if mode == 'pid':
-                        if np.any(np.isfinite(list(ellipticity.values()))):
-                            e = np.nanmean(list(ellipticity.values()))
-                            F = -np.log(e)
-                            if np.abs(F) > 1:
-                                F = 0
-                            Pz = P(F)
-                            Z.PiezoPos = Pz
-
-                            if Pz > (G + 5):
-                                P = pid(0, G, maxStep, TimeInterval, gain)
+                        detected.append(True)
                     else:
-                        dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep) for channel, e in ellipticity.items()}
-                        cur_channel_idx = TTime % len(channels)
-                        next_channel_idx = (TTime + 1) % len(channels)
-                        if np.any(np.isfinite(list(dz.values()))):
-                            if feedbackMode == 0: #Average
-                                dz = np.nanmean(list(dz.values()))
-                                if not np.isnan(dz):
-                                    # Z.MovePiezoRel(-dz)
-                                    Z.PiezoPos -= dz
-                            else: #Alternate: save focus in current channel, apply focus to piezo for next channel
-                                if np.isfinite(dz[channels[cur_channel_idx]]):
-                                    zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]]
-                                elif not channels[cur_channel_idx] in zmem:
-                                    zmem[channels[cur_channel_idx]] = PiezoPos
-                                if channels[next_channel_idx] in zmem:
-                                    Z.PiezoPos = zmem[channels[next_channel_idx]]
+                        Fitted = False
+                        detected.append(False)
+                    Queue.put((channel, TTime, Fitted, a[:8], PiezoPos, FocusPos, STime))
 
-                    # Wait for next frame:
-                    while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
-                        sleep(TimeInterval / 4)
-                    if Time < TimeMem:
-                        break
+                # Update the piezo position:
+                if mode == 'pid':
+                    if np.any(np.isfinite(list(ellipticity.values()))):
+                        e = np.nanmean(list(ellipticity.values()))
+                        F = -np.log(e)
+                        if np.abs(F) > 1:
+                            F = 0
+                        Pz = P(F)
+                        Z.PiezoPos = Pz
 
-                    TimeMem = Time
+                        if Pz > (G + 5):
+                            P = pid(0, G, maxStep, TimeInterval, gain)
+                else:
+                    dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep) for channel, e in ellipticity.items()}
+                    cur_channel_idx = TTime % len(channels)
+                    next_channel_idx = (TTime + 1) % len(channels)
+                    if np.any(np.isfinite(list(dz.values()))):
+                        if feedbackMode == 0: #Average
+                            dz = np.nanmean(list(dz.values()))
+                            if not np.isnan(dz):
+                                # Z.MovePiezoRel(-dz)
+                                Z.PiezoPos -= dz
+                        else: #Alternate: save focus in current channel, apply focus to piezo for next channel
+                            if np.isfinite(dz[channels[cur_channel_idx]]):
+                                zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]]
+                            elif not channels[cur_channel_idx] in zmem:
+                                zmem[channels[cur_channel_idx]] = PiezoPos
+                            if channels[next_channel_idx] in zmem:
+                                Z.PiezoPos = zmem[channels[next_channel_idx]]
+
+                # Wait for next frame:
+                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
+                    sleep(TimeInterval / 4)
+                if Time < TimeMem:
+                    break
+
+                TimeMem = Time
                 NameSpace.run = False
         else:
             sleep(0.01)
+
 
 class App(QMainWindow):
     def __init__(self):
@@ -155,8 +169,8 @@ class App(QMainWindow):
         self.color = '#454D62'
         self.textColor = '#FFFFFF'
 
-        self.stop = False # Stop (waiting for) experiment
-        self.quit = False # Quit program
+        self.stop = False  # Stop (waiting for) experiment
+        self.quit = False  # Quit program
         self.conf = config.conf()
 
         self.zen = zen()
@@ -166,7 +180,7 @@ class App(QMainWindow):
         self.theta = {}
 
         self.feedbackMode = 0  # Average, 1: Alternate
-        self.channels = [0]
+        self.channels = []
 
         self.ellipse = {}
         self.rectangle = None
@@ -197,21 +211,19 @@ class App(QMainWindow):
         self.fblprocess.start()
         self.guithread = None
 
-        events(self)
+        self.events = Events(self)
 
         self.setCentralWidget(self.central_widget)
         self.show()
-        self.wait_for_zen()
+        self.zen.wait(self, self.zen_ready)
 
-    @thread
-    def wait_for_zen(self):
-        while not self.zen.ready and not self.stop and not self.quit:
-            sleep(0.1)
+    def zen_ready(self, _):
         self.confopen(self.conf.filename)
         self.changeColor()
-        self.contrunchkbx.setEnabled(True)
         self.centerbox.setEnabled(True)
-        self.startbtn.setEnabled(True)
+        if len(self.channels):
+            self.contrunchkbx.setEnabled(True)
+            self.startbtn.setEnabled(True)
 
     def menus(self):
         mainMenu = self.menuBar()
@@ -325,7 +337,8 @@ class App(QMainWindow):
 
         r = 0
         self.grid.addWidget(QLabel('Feedback channel:'), r, 0)
-        self.rdbch = QGUI.CheckBoxes(['{}'.format(i) for i in range(10)], init_state=self.channels, callback=self.changechannel)
+        self.rdbch = QGUI.CheckBoxes(['{}'.format(i) for i in range(10)], init_state=self.channels,
+                                     callback=self.changechannel)
         for i, e in enumerate((664, 510, 600)):
             self.rdbch.setTextBoxValue(i, e)
         self.grid.addWidget(self.rdbch, r, 1)
@@ -412,7 +425,8 @@ class App(QMainWindow):
     def changeColor(self):
         for channel in self.channels:
             color = self.zen.ChannelColorsRGB[channel]
-            for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot, self.yzplot):
+            for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot,
+                         self.yzplot):
                 if channel in plot:
                     plot.plt[channel].set_color(color)
             for tb in ('top', 'bottom'):
@@ -430,21 +444,18 @@ class App(QMainWindow):
     def calibrate(self, *args, **kwargs):
         self.calibbtn.setEnabled(False)
         options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
-        file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)", options=options)
+        file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)",
+                                              options=options)
         if file:
-            self.calibrate_file(file)
+            self.calibz_thread = qthread(calibz, self.calibrated, file)
+        else:
+            self.calibbtn.setEnabled(True)
 
-    @thread
-    def calibrate_file(self, file):
-        from calibz import calibz
-        np.seterr(all='ignore');
-        self.theta, self.q = calibz(file)
+    def calibrated(self, theta, q):
+        self.theta, self.q = theta, q
         #self.NameSpace.q = self.q
         #self.NameSpace.theta = self.theta
         self.calibbtn.setEnabled(True)
-        self.thetafld.setText('{}'.format(self.theta))
-        for i in range(9):
-            self.edt[i].setText('{}'.format(self.q[i]))
 
     def resetmap(self):
         self.map.remove_data()
@@ -452,7 +463,8 @@ class App(QMainWindow):
     def confsave(self, f):
         if not isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
-            f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
+            f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)",
+                                               options=options)
         if f:
             self.conf.filename = f
             self.conf.maxStep = self.maxStep
@@ -463,7 +475,8 @@ class App(QMainWindow):
     def confopen(self, f):
         if not isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
-            f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)", options=options)
+            f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)",
+                                               options=options)
         if f:
             self.q = {}
             self.theta = {}
@@ -482,7 +495,7 @@ class App(QMainWindow):
 
     def changeDLF(self, val):
         #Change the duolink filter
-        if val=='1':
+        if val == '1':
             self.zen.DLFilter = 0
         else:
             self.zen.DLFilter = 1
@@ -495,6 +508,11 @@ class App(QMainWindow):
         if len(val):
             self.channels = [int(v) for v in val]
             self.confopen(self.conf.filename)
+            self.contrunchkbx.setEnabled(True)
+            self.startbtn.setEnabled(True)
+        else:
+            self.contrunchkbx.setEnabled(False)
+            self.startbtn.setEnabled(False)
 
     def changeDL(self, *args):
         #Upon change of duolink filterblock
@@ -516,8 +534,7 @@ class App(QMainWindow):
     def prime(self):
         if self.guithread is None or not self.guithread.is_alive():
             self.NameSpace.stop = False
-            self.guithread = Thread(target=self.run)
-            self.guithread.start()
+            self.guithread = qthread(target=self.run)
 
     def stayprimed(self):
         if self.contrunchkbx.isChecked():
@@ -719,21 +736,18 @@ class App(QMainWindow):
         self.contrunchkbx.setChecked(False)
         self.stop = True
         self.NameSpace.stop = True
-        if not self.guithread is None and self.guithread.is_alive():
-            self.guithread.join(5)
 
     def setquit(self):
         # Quit the whole program
         self.setstop()
         self.quit = True
         self.NameSpace.quit = True
-        close_threads()
         self.fblprocess.join(5)
         self.fblprocess.terminate()
 
 
 def main():
-    freeze_support()  # to enable fbs/pyinstaller to work with multiprocessing
+    freeze_support()  # to enable pyinstaller to work with multiprocessing
     app = QApplication([])
     window = App()
     exit(app.exec())

@@ -6,13 +6,14 @@ import multiprocessing
 import trackpy
 import pandas
 import skimage.filters
-from imread import imread
 from parfor import parfor
 
 if __package__ == '':
     import utilities
+    from imread import imread
 else:
     from . import utilities
+    from .imread import imread
 
 def sliding_mean(X, data, sig, width, x):
     X = np.array(X)

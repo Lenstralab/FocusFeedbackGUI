@@ -1,21 +1,39 @@
 import numpy as np
-from threading import Thread
+from PyQt5 import QtCore
+from traceback import format_exc
 
-threads = []
-def thread(fun):
-    """ decorator to run function in a separate thread to keep the gui responsive
-    """
-    def tfun(*args, **kwargs):
-        T = Thread(target=fun, args=args, kwargs=kwargs)
-        threads.append(T)
-        T.start()
-        # return T
-    return tfun
 
-def close_threads():
-    print('Joining {} threads.'.format(len(threads)))
-    for T in threads:
-        T.join()
+class qthread(QtCore.QThread):
+    done = QtCore.pyqtSignal(object)
+
+    def __init__(self, target, callback=None, *args, **kwargs):
+        super().__init__()
+        self.is_alive = True
+        self.target = target
+        self.args = args
+        self.kwargs = kwargs
+        self.callback = callback
+        self.done.connect(self.join)
+        self.start()
+
+    def run(self):
+        try:
+            self.done.emit((0, self.target(*self.args, **self.kwargs)))
+        except Exception:
+            self.done.emit((1, format_exc()))
+
+    def join(self, state):
+        self.quit()
+        self.wait()
+        self.is_alive = False
+        state, args = state
+        if not isinstance(args, tuple):
+            args = (args,)
+        if state:
+            raise Exception(args)
+        if self.callback is not None:
+            self.callback(*args)
+
 
 def errwrap(fun):
     def e(*args, **kwargs):
@@ -24,6 +42,7 @@ def errwrap(fun):
         except:
             return None
     return e
+
 
 def fixpar(N, fix):
     """ Returns a function which will add fixed parameters in fix into an array

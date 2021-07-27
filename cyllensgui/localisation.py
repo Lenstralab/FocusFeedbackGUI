@@ -2,7 +2,6 @@ import numpy as np
 import scipy
 import skimage
 import pandas
-import nbhelpers as nb
 import skimage.feature
 from parfor import pmap
 import matplotlib.pyplot as plt
@@ -10,9 +9,12 @@ import matplotlib.pyplot as plt
 if __package__ == '':
     import utilities
     import functions2 as functions
+    import nbhelpers as nb
 else:
     from . import utilities
     from . import functions2 as functions
+    from . import nbhelpers as nb
+
 
 def crop(im, x, y=None, z=None, m=np.nan):
     """ crops image im, limits defined by min(x)..max(y), when these limits are
@@ -225,7 +227,7 @@ def tpsuperresseq(f, im, theta=True, tilt=True, keep=[], filter=True):
 
     frames = f['frame'].astype('int').tolist()
     c = ((i, im(j)) for i, j in zip(f.iterrows(), frames))
-    s = [im.sigma(i) for i in range(int(f['C'].max()) + 1)]
+    s = [im.sigma[i] for i in range(int(f['C'].max()) + 1)]
     q = pmap(fun, c, (s, keep, fix, ell, tilt, k, filter), desc='Fitting localisations', length=len(frames))
     return pandas.concat(q, sort=True)
 
@@ -408,7 +410,10 @@ def fitgauss(im, xy=None, ell=False, tilt=False, fwhm=None, fix=None, pl=False):
 
     # make sure the initial parameters are within bounds
     for i, b in zip(p, bnds):
-        i = utilities.errwrap(np.clip, i, i, b[0], b[1])
+        try:
+            i = np.clip(i, b[0], b[1])
+        except Exception:
+            pass
 
     nPar = len(p)
 

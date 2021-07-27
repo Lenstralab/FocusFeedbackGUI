@@ -4,7 +4,11 @@ import numpy as np
 from re import search
 from time import sleep
 from threading import get_ident
-import inspect
+
+if __package__ == '':
+    from utilities import qthread
+else:
+    from .utilities import qthread
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
@@ -40,6 +44,7 @@ def cst(str):
     except:
         return 0
 
+
 class zen:
     def __init__(self, EventHandler=None):
         self.EventHandler = EventHandler
@@ -55,6 +60,17 @@ class zen:
 
     def __exit__(self, *args, **kargs):
         self.close()
+
+    def wait(self, clg, callback):
+        def fun():
+            while not self.ready and not clg.stop and not clg.quit:
+                sleep(0.1)
+        self.wait_thread = qthread(fun, callback)
+
+    def _wait_ready(self, *args, **kwargs):
+        self.wait.quit()
+        self.wait.wait()
+        self.wait_callback(*args, **kwargs)
 
     def close(self):
         id = get_ident()

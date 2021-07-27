@@ -1,4 +1,5 @@
 from numba import jit
+from numba.typed import List
 import numpy as np
 
 @jit(nopython=True, nogil=True)
@@ -83,6 +84,7 @@ def gaussian7(p,X,Y):
         reimplemented for numba, small deviations from true result
             possible because of reimplementation of erf
     """
+    p = List(p)
     if p[2] == 0:
         efac = 1e-9
     else:

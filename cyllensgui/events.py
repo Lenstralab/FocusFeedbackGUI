@@ -5,10 +5,11 @@ from dataclasses import dataclass
 
 if __package__ == '':
     from zen import zen, cst
-    from utilities import thread, errwrap
+    from utilities import errwrap, qthread
 else:
     from .zen import zen, cst
-    from .utilities import thread, errwrap
+    from .utilities import errwrap, qthread
+
 
 class EventHandlerMetaClass(type):
     """
@@ -33,6 +34,7 @@ class EventHandlerMetaClass(type):
             if func is None:
                 setattr(cls, name, partial(EventHandlerMetaClass.null_event_handler, name))
         return cls
+
 
 def EventHandler(ZEN, CLG):
     class EventHandlerCls(metaclass=EventHandlerMetaClass):
@@ -71,6 +73,7 @@ def EventHandler(ZEN, CLG):
                 self.clg.changeColor()
     return EventHandlerCls
 
+
 @dataclass
 class mem:
     z: type
@@ -108,15 +111,14 @@ class mem:
             self.clg.MagStr = self.z.MagStr
             self.clg.confopen(self.clg.conf.filename)
 
-@thread
-def events(clg):
-    with zen(partial(EventHandler, CLG=clg)) as z:
-        m = mem(z, clg, (None, False), (None, False), False)
-        z.EnableEvent('LeftButtonDown')
-        while not clg.quit:
-            sleep(.01)
-            pythoncom.PumpWaitingMessages()
-            m.checks()
 
-
-
+def Events(clg):
+    def fun():
+        with zen(partial(EventHandler, CLG=clg)) as z:
+            m = mem(z, clg, (None, False), (None, False), False)
+            z.EnableEvent('LeftButtonDown')
+            while not clg.quit:
+                sleep(.01)
+                pythoncom.PumpWaitingMessages()
+                m.checks()
+    return qthread(fun)

@@ -8,13 +8,15 @@ import scipy, os, pandas, re
 import trackpy as tp
 from tqdm.auto import trange
 import warnings
-from imread import imread
 import skimage.filters
 
 if __package__ == '':
     import utilities, localisation
+    from imread import imread
 else:
     from . import utilities, localisation
+    from .imread import imread
+
 
 def zhuang_fun(z, p):
     """ p: [sigma0,A,B,c,d]
@@ -158,7 +160,7 @@ def calibz(im):
 
     a = localisation.detect_points_sf(im.maxz(1), .35 / im.NA / im.pxsize)
 
-    a = a.query('R2>0').copy()
+    a = a.query('R2>0.3').copy()
     a['particle'] = range(len(a))
 
     fig = plt.figure(figsize=(15, 6))
@@ -189,18 +191,18 @@ def calibz(im):
             d = pandas.concat((d, b))
     d = d.reset_index(drop=True)
 
-    sbu = im.sigma
+    # sbu = im.sigma
     # im.sigma = lambda x: 1.6
     #im.frame_decorator = lambda im, frame, c, z, t: gfilter(frame, im.sigma(c))
 
     a = localisation.tpsuperresseq(d, im, theta=True, tilt=False, filter=False)
 
     fig.add_subplot(gs[0, 2])
-    plt.hist((a.query('R2>0.8')['theta'] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100);
+    plt.hist((a.query('R2>0.3')['theta'] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100);
     plt.xlabel('theta')
     pdf.savefig(fig)
 
-    theta, dtheta = utilities.circ_weightedmean(a.query('R2>0.8')['theta'], a.query('R2>0.8')['dtheta'], np.pi / 2)
+    theta, dtheta = utilities.circ_weightedmean(a.query('R2>0.3')['theta'], a.query('R2>0.3')['dtheta'], np.pi / 2)
     #theta *= -1
     print('θ = {} ± {}'.format(theta, dtheta))
 
@@ -211,20 +213,20 @@ def calibz(im):
     a['dx_um'] = a['dx'] * im.pxsize
     a['dy_um'] = a['dy'] * im.pxsize
 
-    im.sigma = sbu
+    # im.sigma = sbu
     im.frame_decorator = None
 
     # individual Zhuang fits
     nColumns = 3
 
-    a0 = a.query('R2>0.9 & 0.1<s_um<0.6 & 2/3<e<3/2 & dx_um<0.05 & dy_um<0.05 & de<0.2 & ds_um<0.2').copy()
+    a0 = a.query('R2>0.6 & 0.1<s_um<0.6 & 2/3<e<3/2 & dx_um<0.05 & dy_um<0.05 & de<0.2 & ds_um<0.2').copy()
 
     particles = set(a0['particle'])
     lp = len(particles)
     fig = plt.figure(figsize=(15, lp))
     gs = GridSpec(int(np.ceil(lp / nColumns)), nColumns, figure=fig)
 
-    pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for i in range(16))
+    pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for _ in range(16))
 
     for i, p in enumerate(particles):
         b = a0.query('particle=={}'.format(p)).copy()
