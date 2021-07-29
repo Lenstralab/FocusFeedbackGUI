@@ -12,6 +12,13 @@ import yaml
 from itertools import product
 from collections import OrderedDict
 
+if __package__ == '':
+    from transforms import Transform
+    from tiffwrite import IJTiffWriter
+else:
+    from .transforms import Transform
+    from .tiffwrite import IJTiffWriter
+
 
 def getConfig(file):
     """ Open a yml parameter file
@@ -378,16 +385,17 @@ class imread:
         self.parameter = parameter
 
         # handle transforms
-        if not transform is False:
-            if __package__ == '':
-                from transforms import frame_transform, init_transform
-            else:
-                from .transforms import frame_transform, init_transform
-            self.dotransform = True
-            self.__framet__ = lambda c, z, t: frame_transform(self, c, z, t)
-            init_transform(self, transform)
-        else:
+        if transform is False:
             self.dotransform = False
+        else:
+            self.dotransform = True
+            if isinstance(transform, Transform):
+                self.transform = transform
+                self.transform.adapt(self.frameoffset, self.shape)
+            else:
+                self.transformFromBeads()
+                self.transform.adapt(self.frameoffset, self.shape)
+            self.__framet__ = lambda c, z, t: self.transform.frame(self.__frame__(c, z, t))
 
         # self.xmeta = xmldata(self.omedata)
 
@@ -687,12 +695,8 @@ class imread:
         return c + z * self.shape[2] + t * self.shape[2] * self.shape[3]
 
     def transform_frame(self, frame, c, *args):
-        if __package__ == '':
-            from transforms import tfilter_transform
-        else:
-            from .transforms import tfilter_transform
         if self.dotransform and self.detector[c] == self.masterch:
-            return tfilter_transform(frame, self.tfilter)
+            self.transform.frame(frame)
         else:
             return frame
 
@@ -935,14 +939,71 @@ class imread:
                 return
         return
 
+    def get_bead_files(self):
+        if self.path.endswith('Pos0'):
+            path = os.path.dirname(os.path.dirname(self.path))
+        else:
+            path = os.path.dirname(self.path)
+        files = sorted([os.path.join(path, f) for f in os.listdir(path) if f.lower().startswith('beads')])
+        if not files:
+            raise Exception('No bead file found!')
+        Files = []
+        for file in files:
+            try:
+                if os.path.isdir(file):
+                    file = os.path.join(file, 'Pos0')
+                with imread(file) as im:  # check for errors opening the file
+                    pass
+                Files.append(file)
+            except:
+                continue
+        if not Files:
+            raise Exception('No bead file found!')
+        return Files
+
+    def transformFromBeads(self):
+        if self.path.endswith('Pos0'):
+            path = os.path.dirname(os.path.dirname(self.path))
+        else:
+            path = os.path.dirname(self.path)
+
+        ymlpath = os.path.join(path, 'transform.yml')
+        tifpath = os.path.join(path, 'transform.tif')
+        if os.path.isfile(ymlpath):
+            self.transform = Transform(ymlpath)
+        else:
+            print('No transform file found, trying to generate one.')
+            if self.beadfile is None:
+                self.beadfile = self.get_bead_files()
+            files = self.beadfile
+            if isinstance(files, str):
+                files = (files,)
+
+            with IJTiffWriter(tifpath, (2, 1, len(files))) as tif:
+                T = []
+                for s, file in enumerate(files):
+                    print(f'Using {file} to calculate a transform.')
+                    with imread(file) as im:
+                        if im.shape[2] > 1:
+                            imr = self.max(self.detector.index(self.slavech))
+                            img = self.max(self.detector.index(self.masterch))
+                            t = Transform(imr, img)
+                            print(f'parameters: {t.parameters}')
+                            tif.save(np.hstack((imr, imr)), 0, 0, s)
+                            tif.save(np.hstack((img, t.frame(img))), 1, 0, s)
+                            T.append(t)
+            print(f'Saving transform in {ymlpath}.')
+            print(f'Please check the transform in {tifpath}.')
+            self.transform = Transform()
+            self.transform.shape = T[0].shape
+            self.transform.parameters = np.mean([t.parameters for t in T], 0)
+            self.transform.dparameters = (np.std([t.parameters for t in T], 0) / np.sqrt(len(T))).tolist()
+            self.transform.save(ymlpath)
+
     def save_as_tiff(self, fname=None, c=None, z=None, t=None, split=False, bar=True, pixel_type='uint16'):
         """ saves the image as a tiff-file
             split: split channels into different files
         """
-        if __package__ == '':
-            from tiffwrite import IJTiffWriter
-        else:
-            from .tiffwrite import IJTiffWriter
         if fname is None:
             fname = self.path[:-3] + 'tif'
         elif not fname[-3:] == 'tif':

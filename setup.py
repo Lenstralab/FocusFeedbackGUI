@@ -18,7 +18,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.7',
-    install_requires=['numpy>=1.16.5', 'scipy', 'matplotlib', 'parfor', 'scikit-image>=0.18.0',
-                      'pandas', 'tqdm', 'trackpy', 'PyQt5', ' pyyaml', 'numba', 'czifile', 'pypiwin32'],
+    install_requires=['numpy>=1.16.5', 'scipy', 'matplotlib', 'parfor', 'scikit-image>=0.18.0', 'pandas', 'tqdm',
+                      'trackpy', 'PyQt5', 'pyyaml', 'numba', 'tifffile', 'czifile', 'colorcet'],
     scripts=['bin/cyllensgui'],
 )

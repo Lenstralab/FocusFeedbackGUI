@@ -6,7 +6,6 @@ from time import sleep, time
 from datetime import datetime
 from functools import partial
 from multiprocessing import Process, Queue, Manager, freeze_support
-# from parfor import parpool
 from PyQt5.QtWidgets import *
 
 import numpy as np
@@ -16,19 +15,25 @@ if __package__ == '':
     import cylinderlens as cyl
     import functions, config
     from utilities import qthread
-    from events import Events
     from pid import pid
-    from zen import zen
     from calibz import calibz
+    try:
+        from zen import zen
+        from events import Events
+    except Exception:
+        from Fzen import zen, Events
 else:
     from . import QGUI
     from . import cylinderlens as cyl
     from . import functions, config
     from .utilities import qthread
-    from .events import Events
     from .pid import pid
-    from .zen import zen
     from .calibz import calibz
+    try:
+        from .zen import zen
+        from .events import Events
+    except Exception:
+        from .Fzen import zen, Events
 
 np.seterr(all='ignore');
 
@@ -70,14 +75,11 @@ def feedbackloop(Queue, NameSpace):
                 channel, Frame = c
                 return functions.fg(Frame, theta[channel], sigma[channel], fastMode)
 
-            # up to and including TimeMem = Time
-            # with parpool(fitter, (theta, sigma, fastMode), nP=len(channels)) as pool:
             while Z.ExperimentRunning and (not NameSpace.stop):
                 ellipticity = {}
                 PiezoPos = Z.PiezoPos
                 FocusPos = Z.GetCurrentZ
 
-                # Do not use pool
                 for channel in channels:
                     STime = time()
                     Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
@@ -87,23 +89,7 @@ def feedbackloop(Queue, NameSpace):
                     else:
                         TTime = Time
 
-                # Use pool
-                # Times = {}
-                # for channel in channels:
-                #     STime = time()
-                #     Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
-                #     pool[channel] = (channel, Frame)
-                #     Times[channel] = (STime, Time)
-                #
-                # for channel in channels:
-                #     STime, Time = Times[channel]
-                #     a = pool[channel]
-                #     if Time < TimeMem:
-                #         TTime = TimeMem + 1
-                #     else:
-                #         TTime = Time
-
-                    #try to determine when something is detected by using a simple filter on R2, elipticity and psf width
+                    # try to determine when something is detected by using a simple filter on R2, el and psf width
                     if not any(np.isnan(a)) and all([l[0]<n<l[1] for n, l in zip(a, limits[channel])]):
                         if sum(detected)/len(detected) > 0.35:
                             Fitted = True
@@ -129,16 +115,16 @@ def feedbackloop(Queue, NameSpace):
                         if Pz > (G + 5):
                             P = pid(0, G, maxStep, TimeInterval, gain)
                 else:
-                    dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep) for channel, e in ellipticity.items()}
+                    dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep)
+                          for channel, e in ellipticity.items()}
                     cur_channel_idx = TTime % len(channels)
                     next_channel_idx = (TTime + 1) % len(channels)
                     if np.any(np.isfinite(list(dz.values()))):
-                        if feedbackMode == 0: #Average
+                        if feedbackMode == 0:  # Average
                             dz = np.nanmean(list(dz.values()))
                             if not np.isnan(dz):
-                                # Z.MovePiezoRel(-dz)
                                 Z.PiezoPos -= dz
-                        else: #Alternate: save focus in current channel, apply focus to piezo for next channel
+                        else:  # Alternate: save focus in current channel, apply focus to piezo for next channel
                             if np.isfinite(dz[channels[cur_channel_idx]]):
                                 zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]]
                             elif not channels[cur_channel_idx] in zmem:
@@ -147,7 +133,8 @@ def feedbackloop(Queue, NameSpace):
                                 Z.PiezoPos = zmem[channels[next_channel_idx]]
 
                 # Wait for next frame:
-                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) and (not NameSpace.quit):
+                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) \
+                        and (not NameSpace.quit):
                     sleep(TimeInterval / 4)
                 if Time < TimeMem:
                     break
@@ -161,10 +148,11 @@ def feedbackloop(Queue, NameSpace):
 class App(QMainWindow):
     def __init__(self):
         super().__init__()
+        screen = QDesktopWidget().screenGeometry()
         self.title = 'Cylinder lens feedback GUI'
         self.width = 640
         self.height = 1024
-        self.right = 1920
+        self.right = screen.width() - self.width
         self.top = 32
         self.color = '#454D62'
         self.textColor = '#FFFFFF'
@@ -640,7 +628,8 @@ class App(QMainWindow):
 
                     self.startbtn.setText('Experiment started')
 
-                    while (self.zen.ExperimentRunning or (not self.Queue.empty())) and (not self.stop) and (not self.quit):
+                    while (self.zen.ExperimentRunning or (not self.Queue.empty())) and (not self.stop) \
+                            and (not self.quit):
                         pxsize = self.zen.pxsize
 
                         #Wait until feedbackloop analysed a new frame

@@ -77,7 +77,7 @@ class strct:
 class conf:
     def __init__(self, filename=None):
         if filename is None:
-            filename = ffind('^conf\.yml$', 'once')
+            filename = ffind('^conf\.yml$', os.path.dirname(__file__), 'once')
         self.__dict__['_filename'] = filename
 
     def __contains__(self, item):
