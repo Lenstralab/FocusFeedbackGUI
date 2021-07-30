@@ -1,41 +1,40 @@
+import os
+import yaml
+import re
+import numpy as np
 from sys import exit
-from os.path import isfile, splitext
-from os import remove
 from shutil import copyfile
 from time import sleep, time
 from datetime import datetime
 from functools import partial
 from multiprocessing import Process, Queue, Manager, freeze_support
+from collections import deque
 from PyQt5.QtWidgets import *
-
-import numpy as np
 
 if __package__ == '':
     import QGUI
     import cylinderlens as cyl
-    import functions, config
-    from utilities import qthread
+    import functions
+    from utilities import qthread, yamlload
     from pid import pid
-    from calibz import calibz
+    from imread import warp
     try:
-        from zen import zen
-        from events import Events
+        from zen import zen, Events
     except Exception:
         from Fzen import zen, Events
 else:
     from . import QGUI
     from . import cylinderlens as cyl
-    from . import functions, config
-    from .utilities import qthread
+    from . import functions
+    from .utilities import qthread, yamlload
     from .pid import pid
-    from .calibz import calibz
+    from .imread import warp
     try:
-        from .zen import zen
-        from .events import Events
+        from .zen import zen, Events
     except Exception:
         from .Fzen import zen, Events
 
-np.seterr(all='ignore');
+np.seterr(all='ignore')
 
 def firstargonly(fun):
     """ decorator that only passes the first argument to a function
@@ -44,7 +43,6 @@ def firstargonly(fun):
 
 def feedbackloop(Queue, NameSpace):
     # this is run in a separate process
-    np.seterr(all='ignore');
     Z = zen()
     _ = Z.PiezoPos
     while not NameSpace.quit:
@@ -65,15 +63,11 @@ def feedbackloop(Queue, NameSpace):
             G = Z.PiezoPos
             FS = Z.FrameSize
             TimeMem = 0
-            detected = functions.truncated_list(5, (True,)*5)
+            detected = deque((True,) * 5, 5)
             zmem = {}
 
             if mode == 'pid':
                 P = pid(0, G, maxStep, TimeInterval, gain)
-
-            def fitter(c, theta, sigma, fastMode):
-                channel, Frame = c
-                return functions.fg(Frame, theta[channel], sigma[channel], fastMode)
 
             while Z.ExperimentRunning and (not NameSpace.stop):
                 ellipticity = {}
@@ -83,14 +77,14 @@ def feedbackloop(Queue, NameSpace):
                 for channel in channels:
                     STime = time()
                     Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
-                    a = fitter((channel, Frame), theta, sigma, fastMode)
+                    a = np.hstack(functions.fitgauss(Frame, theta[channel], sigma[channel], fastMode))
                     if Time < TimeMem:
                         TTime = TimeMem + 1
                     else:
                         TTime = Time
 
                     # try to determine when something is detected by using a simple filter on R2, el and psf width
-                    if not any(np.isnan(a)) and all([l[0]<n<l[1] for n, l in zip(a, limits[channel])]):
+                    if not any(np.isnan(a)) and all([l[0] < n < l[1] for n, l in zip(a, limits[channel])]):
                         if sum(detected)/len(detected) > 0.35:
                             Fitted = True
                             ellipticity[channel] = a[5]
@@ -159,9 +153,9 @@ class App(QMainWindow):
 
         self.stop = False  # Stop (waiting for) experiment
         self.quit = False  # Quit program
-        self.conf = config.conf()
 
         self.zen = zen()
+        self.conf_filename = os.path.join(os.path.dirname(__file__), 'conf.yml')
 
         self.q = {}
         self.maxStep = 1
@@ -169,6 +163,7 @@ class App(QMainWindow):
 
         self.feedbackMode = 0  # Average, 1: Alternate
         self.channels = []
+        self.calibrating = False
 
         self.ellipse = {}
         self.rectangle = None
@@ -206,7 +201,7 @@ class App(QMainWindow):
         self.zen.wait(self, self.zen_ready)
 
     def zen_ready(self, _):
-        self.confopen(self.conf.filename)
+        self.confopen(self.conf_filename)
         self.changeColor()
         self.centerbox.setEnabled(True)
         if len(self.channels):
@@ -215,7 +210,7 @@ class App(QMainWindow):
 
     def menus(self):
         mainMenu = self.menuBar()
-        fileMenu = mainMenu.addMenu('&Configuration')
+        confMenu = mainMenu.addMenu('&Configuration')
 
         openAction = QAction('&Open', self)
         openAction.setShortcut('Ctrl+O')
@@ -225,16 +220,25 @@ class App(QMainWindow):
         saveAction = QAction('&Save', self)
         saveAction.setShortcut('Ctrl+S')
         saveAction.setStatusTip('Save configuration')
-        saveAction.triggered.connect(partial(self.confsave, self.conf.filename))
+        saveAction.triggered.connect(partial(self.confsave, self.conf_filename))
 
         saveasAction = QAction('Save &As', self)
         saveasAction.setShortcut('Ctrl+Shift+S')
         saveasAction.setStatusTip('Save configuration as')
         saveasAction.triggered.connect(self.confsave)
 
-        fileMenu.addAction(openAction)
-        fileMenu.addAction(saveAction)
-        fileMenu.addAction(saveasAction)
+        confMenu.addAction(openAction)
+        confMenu.addAction(saveAction)
+        confMenu.addAction(saveasAction)
+
+        warpMenu = mainMenu.addMenu('&Transform')
+
+        warpAction = QAction('&Warp', self)
+        warpAction.setShortcut('Ctrl+W')
+        warpAction.setStatusTip('Save a copy of a file where the warp is corrected')
+        warpAction.triggered.connect(self.warp)
+
+        warpMenu.addAction(warpAction)
 
     def settab1(self):
         self.tab1 = QWidget()
@@ -327,7 +331,7 @@ class App(QMainWindow):
         self.grid.addWidget(QLabel('Feedback channel:'), r, 0)
         self.rdbch = QGUI.CheckBoxes(['{}'.format(i) for i in range(10)], init_state=self.channels,
                                      callback=self.changechannel)
-        for i, e in enumerate((664, 510, 600)):
+        for i, e in enumerate((664, 510, 583, 427)):
             self.rdbch.setTextBoxValue(i, e)
         self.grid.addWidget(self.rdbch, r, 1)
 
@@ -380,6 +384,7 @@ class App(QMainWindow):
         self.calibbtn.setToolTip('Calibrate with beads')
         self.calibbtn.clicked.connect(self.calibrate)
         self.grid.addWidget(self.calibbtn, r, 1)
+        self.calibbtn.setEnabled(False)
 
         self.tab2.setLayout(self.grid)
 
@@ -422,64 +427,100 @@ class App(QMainWindow):
                 if cn in self.splot:
                     self.splot.plt[cn].set_color(color)
         camera = [self.zen.CameraFromChannelName(i) for i in self.zen.ChannelNames]
-        enabled = [False if self.cyllensdrp[c].currentText()=='None' else True for c in camera]
+        enabled = [False if self.cyllensdrp[c].currentText() == 'None' else True for c in camera]
         self.rdbch.changeOptions(self.zen.ChannelNames, self.zen.ChannelColorsHex, enabled)
 
     def changeCylLens(self):
-        self.confopen(self.conf.filename)
+        self.confload()
         self.changeColor()
 
     def calibrate(self, *args, **kwargs):
-        self.calibbtn.setEnabled(False)
-        options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
-        file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)",
-                                              options=options)
-        if file:
-            self.calibz_thread = qthread(calibz, self.calibrated, file)
-        else:
-            self.calibbtn.setEnabled(True)
+        if len(self.channels) == 1:
+            self.calibrating = True
+            self.calibbtn.setEnabled(False)
+            options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+            file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)",
+                                                  options=options)
+            if file:
 
-    def calibrated(self, theta, q):
-        self.theta, self.q = theta, q
-        #self.NameSpace.q = self.q
-        #self.NameSpace.theta = self.theta
+                self.calibz_thread = qthread(cyl.calibz, self.calibrated, file, self.rdbch.textBoxValues,
+                                self.channels[0], [i.currentText() for i in self.cyllensdrp], self.calibrate_progress)
+                self.calibrate_progress(0)
+            else:
+                self.calibrating = False
+                self.calibbtn.setEnabled(True)
+
+    def calibrate_progress(self, progress):
+        self.calibbtn.setText(f'Calibrating: {progress:.0f}%')
+
+    def calibrated(self, C, MagStr, theta, q):
+        self.conf[self.getCyllens(C) + MagStr]['theta'] = float(theta)
+        self.conf[self.getCyllens(C) + MagStr]['q'] = q.tolist()
+        for channel in self.channels:
+            self.q[channel] = self.conf[self.getCmstr(channel)]['q']
+            self.theta[channel] = self.conf[self.getCmstr(channel)]['theta']
+        self.calibrating = False
+        self.calibbtn.setText('Calibrate with beads')
         self.calibbtn.setEnabled(True)
+
+    def warp(self):
+        options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+        files, _ = QFileDialog.getOpenFileNames(self, "Image files", "", "CZI Files (*.czi);;All Files (*)",
+                                              options=options)
+        def warpfiles(files):
+            for file in files:
+                if os.path.isfile(file):
+                    warp(file)
+        self.warpthread = qthread(warpfiles, None, files)
 
     def resetmap(self):
         self.map.remove_data()
 
     def confsave(self, f):
-        if not isfile(f):
+        if not os.path.isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
             f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)",
                                                options=options)
         if f:
-            self.conf.filename = f
-            self.conf.maxStep = self.maxStep
-            for channel in self.channels:
-                self.conf[self.getCmstr(channel)].q = self.q[channel]
-                self.conf[self.getCmstr(channel)].theta = self.theta[channel]
+            self.conf_filename = f
+            self.conf['maxStep'] = self.maxStep
+            with open(f, 'w') as h:
+                yaml.dump(self.conf, h, default_flow_style=None)
 
     def confopen(self, f):
-        if not isfile(f):
+        if not os.path.isfile(f):
             options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
             f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)",
                                                options=options)
         if f:
             self.q = {}
             self.theta = {}
-            self.conf.filename = f
-            for channel in self.channels:
-                if self.getCmstr(channel) in self.conf:
-                    if 'q' in self.conf[self.getCmstr(channel)]:
-                        self.q[channel] = self.conf[self.getCmstr(channel)].q
-                    if 'theta' in self.conf[self.getCmstr(channel)]:
-                        self.theta[channel] = self.conf[self.getCmstr(channel)].theta
-            if 'maxStep' in self.conf:
-                self.maxStep = self.conf.maxStep
-                self.maxStepfld.setText('{}'.format(self.maxStep))
-            if 'style' in self.conf:
-                self.setStyleSheet(self.conf.style)
+            with open(f, 'r') as h:
+                self.conf = yamlload(h)
+            self.conf_filename = f
+            self.confload()
+
+    def confload(self):
+        if 'cyllenses' in self.conf:
+            values = ['None']
+            if isinstance(self.conf['cyllenses'], (list, tuple)):
+                values.extend(self.conf['cyllenses'])
+            else:
+                values.extend(re.split('\s?[,;]\s?', self.conf['cyllenses']))
+            for drp in self.cyllensdrp:
+                if values != [drp.itemText(i) for i in range(drp.count())]:
+                    drp.blockSignals(True)
+                    drp.clear()
+                    drp.addItems(values)
+                    drp.blockSignals(False)
+        for channel in self.channels:
+            self.q[channel] = self.conf[self.getCmstr(channel)]['q']
+            self.theta[channel] = self.conf[self.getCmstr(channel)]['theta']
+        if 'maxStep' in self.conf:
+            self.maxStep = self.conf['maxStep']
+            self.maxStepfld.setText('{}'.format(self.maxStep))
+        if 'style' in self.conf:
+            self.setStyleSheet(self.conf['style'])
 
     def changeDLF(self, val):
         #Change the duolink filter
@@ -495,12 +536,14 @@ class App(QMainWindow):
     def changechannel(self, val):
         if len(val):
             self.channels = [int(v) for v in val]
-            self.confopen(self.conf.filename)
+            self.confopen(self.conf_filename)
             self.contrunchkbx.setEnabled(True)
             self.startbtn.setEnabled(True)
         else:
             self.contrunchkbx.setEnabled(False)
             self.startbtn.setEnabled(False)
+        if not self.calibrating:
+            self.calibbtn.setEnabled(len(self.channels) == 1)
 
     def changeDL(self, *args):
         #Upon change of duolink filterblock
@@ -512,9 +555,12 @@ class App(QMainWindow):
     def tglcenterbox(self):
         self.zen.EnableEvent('LeftButtonDown')
 
-    def getCmstr(self, channel):
+    def getCyllens(self, channel):
         camera = self.zen.CameraFromChannelName(self.zen.ChannelNames[channel])
-        return self.cyllensdrp[camera].currentText()+self.zen.MagStr
+        return self.cyllensdrp[camera].currentText()
+
+    def getCmstr(self, channel):
+        return self.getCyllens(channel) + self.zen.MagStr
 
     def closeEvent(self, *args, **kwargs):
         self.setquit()
@@ -532,11 +578,11 @@ class App(QMainWindow):
         np.seterr(all='ignore');
         sleepTime = 0.02 #update interval
 
-        Size = self.conf.ROISize #Size of the ROI in which the psf is fitted
-        Pos = self.conf.ROIPos
-        fastMode = self.conf.fastMode
+        Size = self.conf.get('ROISize', 48) #Size of the ROI in which the psf is fitted
+        Pos = self.conf.get('ROIPos', [0, 0])
+        fastMode = self.conf.get('fastMode', False)
 
-        gain = self.conf.gain
+        gain = self.conf.get('gain', 5e-3)
 
         self.startbtn.setEnabled(False)
         self.stopbtn.setEnabled(True)
@@ -574,9 +620,9 @@ class App(QMainWindow):
                         plot.append_plot(channel, '.', self.zen.ChannelColorsRGB[channel])
 
                 limits[channel] = [[-np.inf, np.inf]] * 8
-                limits[channel][2] = [fwhm[channel]/2, fwhm[channel]*2] #fraction of fwhm
-                limits[channel][5] = [0.7, 1.3]
-                limits[channel][7] = [0, np.inf]
+                limits[channel][2] = [fwhm[channel]/2, fwhm[channel]*2]  # fraction of fwhm
+                limits[channel][5] = [0.7, 1.3]  # ellipticity
+                limits[channel][7] = [0, np.inf]  # R2
 
             #Experiment has started:
             self.NameSpace.mode = self.rdb.state.lower()
@@ -598,27 +644,22 @@ class App(QMainWindow):
             self.rectangle = self.zen.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
 
             cfilename = self.zen.FileName
-            cfexists = isfile(cfilename) #whether ZEN already made the czi file (streaming)
+            cfexists = os.path.isfile(cfilename) #whether ZEN already made the czi file (streaming)
             if cfexists:
-                pfilename = splitext(cfilename)[0]+'.pzl'
+                pfilename = os.path.splitext(cfilename)[0]+'.pzl'
             else:
-                pfilename = splitext(self.conf.tmpPzlFile)[0]+datetime.now().strftime('_%Y%m%d-%H%M%S.pzl')
-                if isfile(pfilename):
-                    remove(pfilename)
-            if not cfexists or (cfexists and not isfile(pfilename)):
-                metafile = config.conf(pfilename)
-                metafile.mode = self.NameSpace.mode
-                metafile.FeedbackChannels = self.NameSpace.channels
-                metafile.CylLens = [self.cyllensdrp[i].currentText() for i in range(2)]
-                metafile.DLFilterSet = self.dlfs.currentText()
-                metafile.DLFilterChannel = self.zen.DLFilter
-                metafile.q = self.NameSpace.q
-                metafile.theta = self.NameSpace.theta
-                metafile.maxStep = self.NameSpace.maxStep
-                metafile.ROISize = Size
-                metafile.ROIPos = Pos
-                metafile.Columns = ['channel', 'frame', 'piezoPos', 'focusPos', 'x', 'y', 'fwhm', 'i', 'o', 'e', 'time']
-                with open(pfilename, 'a+') as file:
+                pfilename = os.path.splitext(self.conf.get('tmpPzlFile', 'd:\tmp\tmp.pzl'))[0] + \
+                            datetime.now().strftime('_%Y%m%d-%H%M%S.pzl')
+                if os.path.isfile(pfilename):
+                    os.remove(pfilename)
+            if not cfexists or (cfexists and not os.path.isfile(pfilename)):
+                with open(pfilename, 'w') as file:
+                    yaml.dump({'mode': self.NameSpace.mode, 'FeedbackChannels': self.NameSpace.channels,
+                               'CylLens': [self.cyllensdrp[i].currentText() for i in range(2)],
+                               'DLFilterSet': self.dlfs.currentText(), 'DLFilterChannel': self.zen.DLFilter,
+                               'q': self.NameSpace.q, 'theta': self.NameSpace.theta, 'maxStep': self.NameSpace.maxStep,
+                               'ROISize': Size, 'ROIPos': Pos, 'Columns': ['channel', 'frame', 'piezoPos', 'focusPos',
+                                                'x', 'y', 'fwhm', 'i', 'o', 'e', 'time']}, f, default_flow_style=None)
                     file.write('p:\n')
 
                     self.plot.remove_data()
@@ -671,8 +712,8 @@ class App(QMainWindow):
                                     self.eplot.range_data(Time, a[:,5], handle=channel)
                                     self.iplot.range_data(Time, a[:,3], handle=channel)
                                     self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize, handle=channel)
-                                    self.splot.range_data(Time, [limits[channel][2][0]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle='bottom{}'.format(channel))
-                                    self.splot.range_data(Time, [limits[channel][2][1]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle='top{}'.format(channel))
+                                    self.splot.range_data(Time, [limits[channel][2][0]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle=f'bottom{channel}')
+                                    self.splot.range_data(Time, [limits[channel][2][1]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle=f'top{channel}')
                                     self.rplot.range_data(Time, a[:,7], handle=channel)
                                     self.pplot.range_data(Time, zfit + FocusPos - z0, handle=channel)
                                     self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize, channel)
@@ -700,10 +741,10 @@ class App(QMainWindow):
                 for ellipse in self.ellipse.values():
                     self.zen.RemoveDrawing(ellipse)
                 if not cfexists:
-                    for i in range(5):
-                        cfilename = functions.last_czi_file(self.conf.dataDir)
-                        npfilename = splitext(cfilename)[0] + '.pzl'
-                        if cfilename and not isfile(npfilename):
+                    for _ in range(5):
+                        cfilename = functions.last_czi_file(self.conf.get('dataDir', 'd:\data'))
+                        npfilename = os.path.splitext(cfilename)[0] + '.pzl'
+                        if cfilename and not os.path.isfile(npfilename):
                             copyfile(pfilename, npfilename)
                             break
                         sleep(0.25)

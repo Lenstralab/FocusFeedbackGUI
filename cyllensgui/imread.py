@@ -70,7 +70,7 @@ def tolist(item):
         return list((item,))
 
 
-class xmldata(dict):
+class xmldata(OrderedDict):
     def __init__(self, elem):
         super(xmldata, self).__init__()
         if elem:
@@ -211,11 +211,11 @@ class xmldata(dict):
             children = [xmldata._todict(child) for child in elem.children]
             children = xmldata._unique_children(children)
             if children:
-                d = dict(d, **children)
+                d = OrderedDict(d, **children)
         if hasattr(elem, '_attributes'):
             children = elem._attributes
             if children:
-                d = dict(d, **children)
+                d = OrderedDict(d, **children)
         if not len(d.keys()) and hasattr(elem, 'cdata'):
             return name, elem.cdata
 
@@ -320,8 +320,8 @@ class imread:
         self.pcf = (1, 1)
         self.timeseries = False
         self.zstack = False
-        self.laserwavelengths = ()
-        self.laserpowers = ()
+        self.laserwavelengths = [[]]
+        self.laserpowers = [[]]
         self.powermode = 'normal'
         self.optovar = (1,)
         self.binning = 1
@@ -331,8 +331,8 @@ class imread:
         self.objective = 'unknown'
         self.filter = 'unknown'
         self.NA = 1
-        self.cyllens = ['None', 'A']
-        self.duolink = '488/640'
+        self.cyllens = ['None', '100x']
+        self.duolink = '488/_561_/640'
         self.detector = [0, 1]
         self.metadata = {}
 
@@ -396,8 +396,29 @@ class imread:
                 self.transformFromBeads()
                 self.transform.adapt(self.frameoffset, self.shape)
             self.__framet__ = lambda c, z, t: self.transform.frame(self.__frame__(c, z, t))
-
-        # self.xmeta = xmldata(self.omedata)
+        try:
+            s = int(re.findall('_(\d{3})_', self.duolink)[0])
+        except Exception:
+            s = 561
+        try:
+            sigma = []
+            for t, d in zip(self.track, self.detector):
+                l = np.array(self.laserwavelengths[t]) + 22
+                sigma.append([l[l > s].max(initial=0), l[l < s].max(initial=0)][d])
+            sigma = np.array(sigma)
+            sigma[sigma == 0] = 600
+            sigma /= 2 * self.NA * self.pxsize * 1000
+            self.sigma = sigma.tolist()
+        except Exception:
+            self.sigma = [2] * self.shape[2]
+        if 1.5 < self.NA:
+            self.immersionN = 1.661
+        elif 1.3 < self.NA < 1.5:
+            self.immersionN = 1.518
+        elif 1 < self.NA < 1.3:
+            self.immersionN = 1.33
+        else:
+            self.immersionN = 1
 
     def cziread(self):
         #TODO: make sure frame function still works when a subblock has data from more than one frame
@@ -461,9 +482,11 @@ class imread:
                 self.settimeinterval = self.exposuretime[0]
         self.pxsizecam = self.metadata.re_search(('AcquisitionModeSetup', 'PixelPeriod'), self.pxsizecam)
         self.magnification = self.metadata.re_search('NominalMagnification', self.magnification)[0]
-        attenuator = self.metadata.search('Attenuator')
-        self.laserwavelengths = [1e9 * float(i['Wavelength']) for i in attenuator]
-        self.laserpowers = [float(i['Transmission']) for i in attenuator]
+        attenuators = self.metadata.search_all('Attenuator')
+        self.laserwavelengths = [[1e9 * float(i['Wavelength']) for i in tolist(attenuator)]
+                                 for attenuator in attenuators.values()]
+        self.laserpowers = [[float(i['Transmission']) for i in tolist(attenuator)]
+                            for attenuator in attenuators.values()]
         self.collimator = self.metadata.re_search(('Collimator', 'Position'))
         detector = self.metadata.search(('Instrument', 'Detector'))
         self.gain = [int(i['AmplificationGain']) for i in detector]
@@ -486,18 +509,14 @@ class imread:
         d = self.metadata.re_search(('Instrument', 'Detector'))
         if not d is None:
             self.detector = [int(i[-1]) for i in d[0].search_all('Id').values()]
+            self.track = [int(i[-3]) for i in d[0].search_all('Id').values()]
             if len(self.detector) == 0:
                 self.detector = [0]
+            if len(self.track) == 0:
+                self.track = [0]
         else:
             self.detector = [0]
-        # self.detector = [int(i[-1]) for i in self.metadata.re_search(('Instrument', 'Detector', 'Id'), [[0]])]
-
-        if 1.5 < self.NA < 1.6:
-            self.immersionN = 1.661
-        elif 1.3 < self.NA < 1.5:
-            self.immersionN = 1.518
-        else:
-            self.immersionN = 1.33
+            self.track = [0]
 
     @property
     def frame_decorator(self):
@@ -533,36 +552,37 @@ class imread:
             return res
 
     def __repr__(self):
-        """ gives a helpfull summary of the recorded experiment
+        """ gives a helpful summary of the recorded experiment
         """
-        s = '##########################################################################################################\n'
-        s += 'path/filename: {}\n'.format(self.path)
-        s += 'shape (xyczt): {} x {} x {} x {} x {}\n'.format(*self.shape)
-        s += 'pixelsize:     {:.2f} nm\n'.format(self.pxsize * 1000)
+        s = [100 * '#']
+        s.append('path/filename: {}'.format(self.path))
+        s.append('shape (xyczt): {} x {} x {} x {} x {}'.format(*self.shape))
+        s.append('pixelsize:     {:.2f} nm'.format(self.pxsize * 1000))
         if self.zstack:
-            s += 'z-interval:    {:.2f} nm\n'.format(self.deltaz * 1000)
-        s += 'Exposuretime:  ' + ('{:.2f} ' * len(self.exposuretime)).format(
-            *(np.array(self.exposuretime) * 1000)) + 'ms\n'
+            s.append('z-interval:    {:.2f} nm'.format(self.deltaz * 1000))
+        s.append('Exposuretime:  ' + ('{:.2f} ' * len(self.exposuretime)).format(
+            *(np.array(self.exposuretime) * 1000)) + 'ms')
         if self.timeseries:
             if self.timeval and np.diff(self.timeval).shape[0]:
-                s += 't-interval:    {:.3f} ± {:.3f} s\n'.format(
-                    np.diff(self.timeval).mean(),
-                    np.diff(self.timeval).std())
+                s.append('t-interval:    {:.3f} ± {:.3f} s'.format(
+                    np.diff(self.timeval).mean(), np.diff(self.timeval).std()))
             else:
-                s += 't-interval:    {:.2f} s\n'.format(self.settimeinterval)
-        s += 'binning:       {}x{}\n'.format(self.binning, self.binning)
-        s += 'laser colors:  ' + ('{:.0f} ' * len(self.laserwavelengths)).format(*self.laserwavelengths) + 'nm\n'
-        s += 'laser powers:  ' + ('{} ' * len(self.laserpowers)).format(*(np.array(self.laserpowers) * 100)) + '%\n'
-        s += 'objective:     {}\n'.format(self.objective)
-        s += 'magnification: {}x\n'.format(self.magnification)
-        s += 'optovar:      ' + (' {}' * len(self.optovar)).format(*self.optovar) + 'x\n'
-        s += 'filterset:     {}\n'.format(self.filter)
-        s += 'powermode:     {}\n'.format(self.powermode)
-        s += 'collimator:   ' + (' {}' * len(self.collimator)).format(*self.collimator) + '\n'
-        s += 'TIRF angle:   ' + (' {:.2f}°' * len(self.tirfangle)).format(*self.tirfangle) + '\n'
-        s += 'gain:         ' + (' {:.0f}' * len(self.gain)).format(*self.gain) + '\n'
-        s += 'pcf:          ' + (' {:.2f}' * len(self.pcf)).format(*self.pcf)
-        return s
+                s.append('t-interval:    {:.2f} s'.format(self.settimeinterval))
+        s.append('binning:       {}x{}'.format(self.binning, self.binning))
+        s.append('laser colors:  ' + ' | '.join([' & '.join(len(l)*('{:.0f}',)).format(*l)
+                                                 for l in self.laserwavelengths]) + ' nm')
+        s.append('laser powers:  ' + ' | '.join([' & '.join(len(l)*('{}',)).format(*[100 * i for i in l])
+                                                 for l in self.laserpowers]) + ' %')
+        s.append('objective:     {}'.format(self.objective))
+        s.append('magnification: {}x'.format(self.magnification))
+        s.append('optovar:      ' + (' {}' * len(self.optovar)).format(*self.optovar) + 'x')
+        s.append('filterset:     {}'.format(self.filter))
+        s.append('powermode:     {}'.format(self.powermode))
+        s.append('collimator:   ' + (' {}' * len(self.collimator)).format(*self.collimator))
+        s.append('TIRF angle:   ' + (' {:.2f}°' * len(self.tirfangle)).format(*self.tirfangle))
+        s.append('gain:         ' + (' {:.0f}' * len(self.gain)).format(*self.gain))
+        s.append('pcf:          ' + (' {:.2f}' * len(self.pcf)).format(*self.pcf))
+        return '\n'.join(s)
 
     def __str__(self):
         return self.path
@@ -646,18 +666,6 @@ class imread:
             return (self.__class__, (self[Ellipsis], self.series, self.dotransform, self.beadfile, self.dtype))
         else:
             return (self.__class__, (self.path, self.series, self.dotransform, self.beadfile, self.dtype))
-
-    @property
-    def sigma(self):
-        """ gives the sigma of the theoretical psf in in the two channels
-            assume typical stokes-shift is 22 nm
-            Do not blindly rely on this to give the correct answer.
-        """
-        if len(self.laserwavelengths) == 1:
-            return [(self.laserwavelengths[0] + 22) / 2 / self.NA / self.pxsize / 1000] * self.shape[2]
-        else:
-            return [(self.laserwavelengths[self.detector[self.czt(n)[0]]] + 22) / 2 / self.NA / self.pxsize / 1000 for n
-                    in range(self.shape[2])]
 
     def czt(self, n):
         """ returns indices c, z, t used when calling im(n)
@@ -985,8 +993,8 @@ class imread:
                     print(f'Using {file} to calculate a transform.')
                     with imread(file) as im:
                         if im.shape[2] > 1:
-                            imr = self.max(self.detector.index(self.slavech))
-                            img = self.max(self.detector.index(self.masterch))
+                            imr = im.max(im.detector.index(self.detector[self.slavech]))
+                            img = im.max(im.detector.index(self.detector[self.masterch]))
                             t = Transform(imr, img)
                             print(f'parameters: {t.parameters}')
                             tif.save(np.hstack((imr, imr)), 0, 0, s)
@@ -1034,3 +1042,24 @@ class imread:
     @property
     def summary(self):
         print(self.__repr__())
+
+
+def info(file):
+    with imread(file) as im:
+        print(im.summary)
+
+
+def warp(file, out=None, channel=None, zslice=None, time=None, split=False, force=True):
+    if os.path.exists(file):
+        with imread(file, transform=True) as im:
+            if out is None:
+                out = file[:-4] + '_transformed.tif'
+            out = os.path.abspath(out)
+            if not os.path.exists(os.path.dirname(out)):
+                os.makedirs(os.path.dirname(out))
+            if os.path.exists(out) and not force:
+                print('File {} exists already, add the -f flag if you want to overwrite it.'.format(out))
+            else:
+                im.save_as_tiff(out, channel, zslice, time, split)
+    else:
+        print('File does not exist.')

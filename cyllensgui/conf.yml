@@ -5,6 +5,7 @@ dataDir: 'd:\data' #where to find the czi to attach the pzl to
 tmpPzlFile: 'd:\tmp\tmp.pzl'
 fastMode: False #fast fitting
 gain: 5e-3 #gain for PID mode
+cyllenses: 100x, 63x
 style: >
   QMainWindow { background-color: #454D62 }
   QWidget { background-color: #454D62 }
@@ -24,18 +25,18 @@ style: >
   QTabBar::tab { background-color: #262E3E; color: #FFFFFF }
   QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF }
 
-A100x10: # LJ1558RM, 300 mm
+100x100x10: # LJ1558RM, 300 mm
   q: [1.11350728, -0.11643823,  0.15658226,  1.26478436,  0.48382135,  0.41210216,  3.73683468, 21.41761362,  0.97043002]
   theta: -0.03
 
-A100x16:
+100x100x16:
   q: [1.11350728, -0.11643823,  0.15658226,  1.26478436,  0.48382135,  0.41210216,  3.73683468, 21.41761362,  0.97043002]
   theta: -0.03
 
-B100x10: # LJ1144RM-A, 500 mm
+63x100x10: # LJ1144RM-A, 500 mm
   q: [1.21028829, -0.08336816, 0.13651387, 1.57704108, 0.96124242, 0.46767497, 0.44916831, 2.27378325, 0.51249788]
   theta: -0.12681961999191083
   
-B100x16: 
+63x100x16:
   q: [4.0, -0.08336816, 0.13651387, 1.57704108, 0.96124242, 0.46767497, 0.44916831, 2.27378325, 0.51249788]
   theta: -0.12681961999191083

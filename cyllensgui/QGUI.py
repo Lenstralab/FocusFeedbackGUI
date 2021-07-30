@@ -1,5 +1,4 @@
 from PyQt5.QtWidgets import *
-
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -7,13 +6,11 @@ from matplotlib import rcParams, pyplot
 rcParams.update({'figure.autolayout': True})
 np.seterr(all='ignore');
 
-def errwrap(fun, default, *args):
-    """ returns either the result of fun(*args) or default when an error occurs
-    """
-    try:
-        return fun(*args)
-    except:
-        return default
+if __package__ == '':
+    from utilities import errwrap
+else:
+    from .utilities import errwrap
+
 
 class RadioButtons(QWidget):
     def __init__(self, txt, init_state=0, callback=None):
@@ -44,6 +41,7 @@ class RadioButtons(QWidget):
                 r.setChecked(True)
             else:
                 r.setChecked(False)
+
 
 class CheckBoxes(QWidget):
     def __init__(self, txt, init_state=[], callback=None):
@@ -113,6 +111,7 @@ class CheckBoxes(QWidget):
         except:
             pass
 
+
 class PlotCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
@@ -125,6 +124,7 @@ class PlotCanvas(FigureCanvas):
     def remove_data(self):
         for subplot in self.subplot:
             subplot.remove_data()
+
 
 class SubPlot:
     def __init__(self, canvas, position=111, linespec='-r', color=None, handle=0):
@@ -149,7 +149,8 @@ class SubPlot:
     def append_data(self, x, y=None, handle=0):
         if y is None:
             y = x
-            x = errwrap(np.nanmax, -1, self.plt.get_xdata()) + np.arange(errwrap(len, 1, x)) + 1
+            # x = errwrap(np.nanmax, -1, self.plt.get_xdata()) + np.arange(errwrap(len, 1, x)) + 1
+            x = errwrap(np.nanmax, -1)(self.plt.get_xdata()) + np.arange(errwrap(len, 1)(x)) + 1
         x = np.hstack((self.plt[handle].get_xdata(), x))
         y = np.hstack((self.plt[handle].get_ydata(), y))
         self.plt[handle].set_xdata(x)
@@ -200,6 +201,7 @@ class SubPlot:
 
     def draw(self):
         self.canvas.draw()
+
 
 class SubPatchPlot:
     def __init__(self, canvas, position=111, color='r'):

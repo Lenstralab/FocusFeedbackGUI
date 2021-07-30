@@ -5,11 +5,10 @@ import numpy as np
 from dill import register
 from copy import deepcopy
 
-
-if hasattr(yaml, 'full_load'):
-    yamlload = yaml.full_load
+if __package__ == '':
+    from utilities import yamlload
 else:
-    yamlload = yaml.load
+    from .utilities import yamlload
 
 
 class Transform:

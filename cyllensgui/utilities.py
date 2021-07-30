@@ -1,6 +1,24 @@
 import numpy as np
 from PyQt5 import QtCore
 from traceback import format_exc
+import yaml
+import re
+
+
+def yamlload(f):
+    # fix loading scientific notation without decimal separator
+    loader = yaml.SafeLoader
+    loader.add_implicit_resolver(
+        u'tag:yaml.org,2002:float',
+        re.compile(u'''^(?:
+         [-+]?(?:[0-9][0-9_]*)\\.[0-9_]*(?:[eE][-+]?[0-9]+)?
+        |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
+        |\\.[0-9_]+(?:[eE][-+][0-9]+)?
+        |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*
+        |[-+]?\\.(?:inf|Inf|INF)
+        |\\.(?:nan|NaN|NAN))$''', re.X),
+        list(u'-+0123456789.'))
+    return yaml.load(f, loader)
 
 
 class qthread(QtCore.QThread):
@@ -35,49 +53,13 @@ class qthread(QtCore.QThread):
             self.callback(*args)
 
 
-def errwrap(fun):
+def errwrap(fun, default=None):
     def e(*args, **kwargs):
         try:
             return fun(*args, **kwargs)
         except:
-            return None
+            return default
     return e
-
-
-def fixpar(N, fix):
-    """ Returns a function which will add fixed parameters in fix into an array
-        N: total length of array which will be input in the function
-        fix: dictionary, {2: 5.6}: fix parameter[2] = 5.6
-
-        see its use in functions.fitgauss
-
-        wp@tl20190816
-    """
-    # indices with variable parameters
-    idx = sorted(list(set(range(N)) - set(fix)))
-
-    # put the fixed paramters in place
-    f = np.zeros(N)
-    for i, v in fix.items():
-        f[i] = v
-
-    # make array used to construct variable part
-    P = np.zeros((N, len(idx)))
-    for i, j in enumerate(idx):
-        P[j, i] = 1
-
-    return lambda par: np.dot(P, par) + f
-
-
-def unfixpar(p, fix):
-    """ reverse of fixpar, but just returns the array immediately instead of returning
-        a function which will do it
-
-        wp@tl20190816
-    """
-    p = list(p)
-    [p.pop(i) for i in sorted(list(fix), reverse=True)]
-    return np.array(p)
 
 
 def maskpk(pk, mask):
@@ -92,29 +74,16 @@ def maskpk(pk, mask):
     return pk[idx, :]
 
 
-def singletuple(x):
-    """ Make sure x gets wrapped in a tuple as a whole, and not split up in the case of strings
-        tuple('hi')       -> ('h', 'i')
-        singletuple('hi') -> ('hi',)
-        wp@tl20190321
-    """
-    a = [];
-    a.append(x)
-    return tuple(a)
-
-
 def weightedmean(x, dx):
     s2 = 1 / (np.nansum(dx ** -2))
     return s2 * np.nansum(x / dx ** 2), np.sqrt(s2)
 
 
-def circ_weightedmean(t, dt=1, T=2 * np.pi):
-    t = (2 * np.pi / T) * t
-    dt = (2 * np.pi / T) * dt
-
+def circ_weightedmean(t, dt=1, T=2*np.pi):
+    t *= 2 * np.pi / T
+    dt = np.clip(dt, 1e-15, np.inf)
     S = np.sum(np.sin(t) / dt)
     C = np.sum(np.cos(t) / dt)
-
     return np.arctan2(S, C) * T / 2 / np.pi, np.sqrt(np.sum((C * np.cos(t) + S * np.sin(t)) ** 2)) / (
                 S ** 2 + C ** 2) * T / 2 / np.pi
 

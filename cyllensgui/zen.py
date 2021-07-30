@@ -4,17 +4,20 @@ import numpy as np
 from re import search
 from time import sleep
 from threading import get_ident
+from functools import partial
+from dataclasses import dataclass
+from enum import Enum
 
 if __package__ == '':
-    from utilities import qthread
+    from utilities import qthread, errwrap
 else:
-    from .utilities import qthread
+    from .utilities import qthread, errwrap
 
 #global property to keep track of indices of drawings in ZEN across threads
 zendrawinglist = []
 lastpiezopos = None
 
-def cst(str):
+class cst(Enum):
     NoButtonMouseMove = 202
     LButtonMouseMove = 201
     LeftButtonDown = 203
@@ -29,7 +32,7 @@ def cst(str):
     ClosedPolyLine = 8
     Ellipse = 5
     Line = 2
-    #None = 0
+    # None = 0
     OpenArrow = 11
     OpenBezier = 9
     OpenPolyLine = 7
@@ -38,11 +41,6 @@ def cst(str):
     ScaleBar = 3
     Select = 1
     Text = 13
-
-    try:
-        return eval('{}'.format(str))
-    except:
-        return 0
 
 
 class zen:
@@ -107,20 +105,10 @@ class zen:
                     ZEN = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(ZENid, pythoncom.IID_IDispatch))
                     VBA = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(VBAid, pythoncom.IID_IDispatch))
                     success = True
-                    # with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
-                    #     f.write('----------')
-                    #     f.write('coinit {}: {}\n'.format(id, len(self._ID)))
-                    #     for i in inspect.stack()[2:15]:
-                    #         f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
                     break
                 except:
                     continue
             if not success:
-                # with open('D:\\CyllensGUI\\zen_reconnect.txt', 'a') as f:
-                #     f.write('----------')
-                #     f.write('reconnect {}: {}\n'.format(id, len(self._ID)))
-                #     for i in inspect.stack()[2:15]:
-                #         f.write('{}: {} {}\n'.format(i.filename, i.function, i.lineno))
                 ZEN = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
                 if self.EventHandler is None:
                     VBA = win32com.client.Dispatch('Lsm5Vba.Application')
@@ -130,8 +118,6 @@ class zen:
                                 pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, VBA))
             self._ZEN_VBA[id] = (ZEN, VBA)
         return self._ZEN_VBA[id]
-        # self.AimImage = win32com.client.Dispatch('AimImage.Image')
-        # self.AET = win32com.client.Dispatch('AimExperiment.TreeNode')
 
     @property
     def ready(self):
@@ -164,13 +150,13 @@ class zen:
                 break
             sleep(0.2)
             doc = self.CurrentDoc
-        doc.EnableImageWindowEvent(cst(event), True)
+        doc.EnableImageWindowEvent(cst(event).value, True)
 
     def DisableEvent(self, event, doc=''):
         if doc == '':
             doc = self.CurrentDoc
         if not doc is None:
-            doc.EnableImageWindowEvent(cst(event), False)
+            doc.EnableImageWindowEvent(cst(event).value, False)
 
     @property
     def IsBusy(self):
@@ -218,8 +204,6 @@ class zen:
 
     def SaveDouble(self, name, value):
         self.ZEN.SetDouble(name, value)
-        #self.AET.Image(0).ApplicationTags().SetDoubleValue(name, value)
-        #self.AimImage.ApplicationTags().SetDoubleValue(name, value)
 
     @property
     def FileName(self):
@@ -259,7 +243,7 @@ class zen:
         return np.reshape(ScanDoc.GetSubregion(Channel, x0, y0, 0, Time, 1, 1, 1, 1, Size, Size, 1, 1, 2)[0],(Size,Size)), Time
 
     def GetFrame(self, Channel=1, X=None, Y=None, Sx=32, Sy=32):
-        Sx = 2*int((Sx+1)/2) #Ensure evenness
+        Sx = 2*int((Sx+1)/2)  # Ensure evenness
         Sy = 2*int((Sy+1)/2)
         ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
         xMax = ScanDoc.GetDimensionX()
@@ -440,7 +424,7 @@ class zen:
         return
 
     def MovePiezoRel(self, Z):
-        #in um
+        # in um
         self.PiezoPos += Z
         return
 
@@ -479,4 +463,117 @@ class zen:
     def DLFilter(self, position):
         FS = self.VBA.Lsm5.Hardware().CpFilterSets()
         FS.Select('2C_FilterSlider')
-        FS.FilterSetPosition = position+1
+        FS.FilterSetPosition = position + 1
+
+
+class EventHandlerMetaClass(type):
+    """
+    A meta class for event handlers that don't repsond to all events.
+    Without this an error would be raised by win32com when it tries
+    to call an event handler method that isn't defined by the event
+    handler instance.
+    """
+    @staticmethod
+    def null_event_handler(event, *args, **kwargs):
+        print(('Unhandled event {}'.format(event), args, kwargs))
+        return None
+
+    def __new__(mcs, name, bases, dict):
+        # Construct the new class.
+        cls = type.__new__(mcs, name, bases, dict)
+
+        # Create dummy methods for any missing event handlers.
+        cls._dispid_to_func_ = getattr(cls, "_dispid_to_func_", {})
+        for dispid, name in cls._dispid_to_func_.items():
+            func = getattr(cls, name, None)
+            if func is None:
+                setattr(cls, name, partial(EventHandlerMetaClass.null_event_handler, name))
+        return cls
+
+
+def EventHandler(ZEN, CLG):
+    class EventHandlerCls(metaclass=EventHandlerMetaClass):
+        def __init__(self):
+            self.clg = CLG
+            self.zen = ZEN
+
+        @errwrap
+        def OnThrowEvent(self, *args):
+            if args[0] == cst.Text.value:
+                return
+            # print(('OnThrowEvent:', args))
+            if args[0] == cst.LeftButtonDown.value and self.clg.centerbox.isChecked():
+                X = self.zen.MousePosition
+                FS = self.zen.FrameSize
+                pxsize = self.zen.pxsize
+                Pos = self.clg.conf['ROIPos']
+                d = [(FS[i]/2 - X[i] + Pos[i]) * pxsize/1000 for i in range(2)]
+                d[1] *= -1
+                self.zen.MoveStageRel(*d)
+
+        @errwrap
+        def OnThrowPropertyEvent(self, *args):
+            # print(('OnThrowProperyEvent:', args))
+            if args[1] == '2C_FilterSlider' and self.clg.DLFilter != self.zen.DLFilter:
+                self.clg.DLFilter = self.zen.DLFilter
+                self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+                self.clg.chdlf.changeState(self.zen.DLFilter)
+            elif args[1] == 'Stage':
+                LP = self.zen.StagePos
+                FS = self.zen.FrameSize
+                pxsize = self.zen.pxsize
+                self.clg.map.numel_data(LP[0]/1000, LP[1]/1000, FS[0]*pxsize/1e6, FS[1]*pxsize/1e6)
+                self.clg.map.draw()
+            elif args[1] in ('DataColorPalette', 'FramesPerStack'):
+                self.clg.changeColor()
+    return EventHandlerCls
+
+
+@dataclass
+class mem:
+    z: zen
+    clg: type
+    prevzen: list
+    curzen: list
+    exprunning: bool
+
+    def title(self):
+        return '' if self.curzen[0] is None else self.curzen[0].Title()
+
+    def checks(self):  # events that don't throw an event
+        if self.title != self.z.Title:  # current document changed
+            self.curzen = [self.z.CurrentDoc, False]  # ActiveDocObject, LMB enabled
+            self.z.EnableEvent('LeftButtonDown')
+
+        # draw a black rectangle in the map after an experiment started
+        exprunning, self.exprunning = self.exprunning, self.z.ExperimentRunning
+        if not exprunning and self.exprunning:
+            LP = self.z.StagePos
+            FS = self.z.FrameSize
+            pxsize = self.z.pxsize
+            self.clg.map.append_data_docs(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
+            self.clg.map.draw()
+
+        # the LMB event is not enabled on the current doc
+        if not self.curzen[1] and self.clg.centerbox.isChecked():
+            if not self.prevzen[0] is None:
+                self.z.DisableEvent('LeftButtonDown', self.prevzen[0])
+            if not self.curzen[0] is None:
+                self.z.EnableEvent('LeftButtonDown', self.curzen[0])
+                self.curzen[1] = True
+
+        if self.clg.MagStr != self.z.MagStr:  # Some things in the optical path have changed
+            self.clg.MagStr = self.z.MagStr
+            self.clg.confload()
+
+
+def Events(clg):
+    def fun():
+        with zen(partial(EventHandler, CLG=clg)) as z:
+            m = mem(z, clg, [None, False], [None, False], False)
+            z.EnableEvent('LeftButtonDown')
+            while not clg.quit:
+                sleep(.01)
+                pythoncom.PumpWaitingMessages()
+                m.checks()
+    return qthread(fun)
