@@ -150,13 +150,13 @@ class zen:
                 break
             sleep(0.2)
             doc = self.CurrentDoc
-        doc.EnableImageWindowEvent(cst(event).value, True)
+        doc.EnableImageWindowEvent(cst[event].value, True)
 
     def DisableEvent(self, event, doc=''):
         if doc == '':
             doc = self.CurrentDoc
         if not doc is None:
-            doc.EnableImageWindowEvent(cst(event).value, False)
+            doc.EnableImageWindowEvent(cst[event].value, False)
 
     @property
     def IsBusy(self):
@@ -307,11 +307,21 @@ class zen:
 
     @property
     def ExperimentRunning(self):
-        return self.ZEN.GUI.Acquisition.IsExperimentRunning.value
+        ScanDoc = self.VBA.Lsm5.DsRecordingActiveDocObject
+        return self.ZEN.GUI.Acquisition.IsExperimentRunning.value and ScanDoc.GetDimensionTime() > 1\
+            and ScanDoc.GetDimensionZ() <= 1
+
+    @property
+    def isZStack(self):
+        return self.VBA.Lsm5.DsRecordingActiveDocObject.GetDimensionZ() > 1
+
+    @property
+    def isTimeSeries(self):
+        return self.VBA.Lsm5.DsRecordingActiveDocObject.GetDimensionTime() > 1
 
     @property
     def TimeInterval(self):
-        #in s
+        # in s
         TI = self.ZEN.GUI.Acquisition.TimeSeries.Interval.value
         unit = self.ZEN.GUI.Acquisition.TimeSeries.IntervalTimeUnit.ByIndex
         if unit == 0:

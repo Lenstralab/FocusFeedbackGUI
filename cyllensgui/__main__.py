@@ -63,6 +63,8 @@ def feedbackloop(Queue, NameSpace):
             G = Z.PiezoPos
             FS = Z.FrameSize
             TimeMem = 0
+            STimeMem = time()
+            piezoTime = .5  # time piezo needs to settle in s
             detected = deque((True,) * 5, 5)
             zmem = {}
 
@@ -96,6 +98,9 @@ def feedbackloop(Queue, NameSpace):
                         detected.append(False)
                     Queue.put((channel, TTime, Fitted, a[:8], PiezoPos, FocusPos, STime))
 
+                STime = time()
+                pzFactor = np.clip((STime - STimeMem) / piezoTime, 0.2, 1)
+
                 # Update the piezo position:
                 if mode == 'pid':
                     if np.any(np.isfinite(list(ellipticity.values()))):
@@ -108,7 +113,7 @@ def feedbackloop(Queue, NameSpace):
 
                         if Pz > (G + 5):
                             P = pid(0, G, maxStep, TimeInterval, gain)
-                else:
+                else:  # Zhuang
                     dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep)
                           for channel, e in ellipticity.items()}
                     cur_channel_idx = TTime % len(channels)
@@ -117,10 +122,10 @@ def feedbackloop(Queue, NameSpace):
                         if feedbackMode == 0:  # Average
                             dz = np.nanmean(list(dz.values()))
                             if not np.isnan(dz):
-                                Z.PiezoPos -= dz
+                                Z.PiezoPos -= dz * pzFactor  # reduce if going faster than piezo, avoid oscillations
                         else:  # Alternate: save focus in current channel, apply focus to piezo for next channel
                             if np.isfinite(dz[channels[cur_channel_idx]]):
-                                zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]]
+                                zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]] * pzFactor
                             elif not channels[cur_channel_idx] in zmem:
                                 zmem[channels[cur_channel_idx]] = PiezoPos
                             if channels[next_channel_idx] in zmem:
@@ -134,6 +139,7 @@ def feedbackloop(Queue, NameSpace):
                     break
 
                 TimeMem = Time
+                STimeMem = STime
                 NameSpace.run = False
         else:
             sleep(0.01)
@@ -194,8 +200,6 @@ class App(QMainWindow):
         self.fblprocess.start()
         self.guithread = None
 
-        self.events = Events(self)
-
         self.setCentralWidget(self.central_widget)
         self.show()
         self.zen.wait(self, self.zen_ready)
@@ -207,6 +211,7 @@ class App(QMainWindow):
         if len(self.channels):
             self.contrunchkbx.setEnabled(True)
             self.startbtn.setEnabled(True)
+        self.events = Events(self)
 
     def menus(self):
         mainMenu = self.menuBar()
@@ -659,7 +664,7 @@ class App(QMainWindow):
                                'DLFilterSet': self.dlfs.currentText(), 'DLFilterChannel': self.zen.DLFilter,
                                'q': self.NameSpace.q, 'theta': self.NameSpace.theta, 'maxStep': self.NameSpace.maxStep,
                                'ROISize': Size, 'ROIPos': Pos, 'Columns': ['channel', 'frame', 'piezoPos', 'focusPos',
-                                                'x', 'y', 'fwhm', 'i', 'o', 'e', 'time']}, f, default_flow_style=None)
+                                    'x', 'y', 'fwhm', 'i', 'o', 'e', 'time']}, file, default_flow_style=None)
                     file.write('p:\n')
 
                     self.plot.remove_data()

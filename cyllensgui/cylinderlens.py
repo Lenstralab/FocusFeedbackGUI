@@ -73,16 +73,8 @@ def findz(ell, q, dell=None, dq=None):
         z = (z,dz)
 
     return z
-    
-def zhuangell(z,q):
-    """ Ellipticity as function of z, with parameter q
-        q: [sx/sy, z0, c, Ax, Bx, dx, Ay, By, dy]
-        wp@tl20190227
-    """
-    X = (z-q[2]-q[1])/q[5]
-    Y = (z+q[2]-q[1])/q[8]
-    return q[0]*np.sqrt((1+X**2+q[3]*X**3+q[4]*X**4)/(1+Y**2+q[6]*Y**3+q[7]*Y**4))
-    
+
+
 def findzhuangrange(q):
     """ Finds the usable range of z in the zhuang function with parameter q,
         ie. the range between peak and valey around z=0
@@ -362,12 +354,9 @@ def calibz(file, em_lambda=None, masterchannel=None, cyllens=None, progress=None
 
         a0 = a.query('R2>0.6 & 0.1<s_um<0.6 & 2/3<e<3/2 & dx_um<0.05 & dy_um<0.05 & de<0.2 & ds_um<0.2').copy()
 
-        # particles = set(a0['particle'])
-
         pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for _ in range(16))
 
         for particles in group(list(set(a0['particle'])), nRows * nColumns):
-            lp = len(particles)
             fig = plt.figure(figsize=A4)
             gs = GridSpec(nRows, nColumns, figure=fig)
             for i, p in enumerate(particles):
