@@ -4,8 +4,8 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="cyllensgui",
-    packages=["cyllensgui"],
+    name="focusfeedbackgui",
+    packages=["focusfeedbackgui"],
     version="2021.07.2",
     author="Wim Pomp @ Lenstra lab NKI",
     author_email="w.pomp@nki.nl",
@@ -21,5 +21,5 @@ setuptools.setup(
     install_requires=['numpy>=1.16.5', 'scipy', 'matplotlib', 'parfor>=2021.7.1', 'scikit-image>=0.18.0', 'pandas',
                       'tqdm', 'trackpy', 'PyQt5', 'pyyaml', 'numba', 'tifffile', 'czifile', 'colorcet',
                       'SimpleITK-SimpleElastix', 'multipledispatch'],
-    scripts=['bin/cyllensgui'],
+    scripts=['bin/focusfeedbackgui'],
 )

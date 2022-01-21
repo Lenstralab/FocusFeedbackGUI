@@ -1,0 +1,791 @@
+import os
+import yaml
+import re
+import numpy as np
+from sys import exit
+from shutil import copyfile
+from time import sleep, time
+from datetime import datetime
+from functools import partial
+from multiprocessing import Process, Queue, Manager, freeze_support
+from collections import deque
+from PyQt5.QtWidgets import *
+
+if __package__ == '':
+    import QGUI
+    import cylinderlens as cyl
+    import functions
+    from utilities import qthread, yamlload
+    from pid import pid
+    from imread import warp
+    try:
+        from zen import zen, Events
+    except Exception:
+        from Fzen import zen, Events
+else:
+    from . import QGUI
+    from . import cylinderlens as cyl
+    from . import functions
+    from .utilities import qthread, yamlload
+    from .pid import pid
+    from .imread import warp
+    try:
+        from .zen import zen, Events
+    except Exception:
+        from .Fzen import zen, Events
+
+np.seterr(all='ignore')
+
+def firstargonly(fun):
+    """ decorator that only passes the first argument to a function
+    """
+    return lambda *args: fun(args[0])
+
+def feedbackloop(Queue, NameSpace):
+    # this is run in a separate process
+    Z = zen()
+    _ = Z.PiezoPos
+    while not NameSpace.quit:
+        if NameSpace.run:
+            mode = NameSpace.mode
+            Size = NameSpace.Size
+            Pos = NameSpace.Pos
+            gain = NameSpace.gain
+            channels = NameSpace.channels
+            q = NameSpace.q
+            theta = NameSpace.theta
+            maxStep = NameSpace.maxStep
+            fastMode = NameSpace.fastMode
+            limits = NameSpace.limits
+            feedbackMode = NameSpace.feedbackMode
+            sigma = NameSpace.sigma
+            TimeInterval = Z.TimeInterval
+            G = Z.PiezoPos
+            FS = Z.FrameSize
+            TimeMem = 0
+            STimeMem = time()
+            piezoTime = .5  # time piezo needs to settle in s
+            detected = deque((True,) * 5, 5)
+            zmem = {}
+
+            if mode == 'pid':
+                P = pid(0, G, maxStep, TimeInterval, gain)
+
+            while Z.ExperimentRunning and (not NameSpace.stop):
+                ellipticity = {}
+                PiezoPos = Z.PiezoPos
+                FocusPos = Z.GetCurrentZ
+
+                for channel in channels:
+                    STime = time()
+                    Frame, Time = Z.GetFrame(channel, *functions.cliprect(FS, *Pos, Size, Size))
+                    a = np.hstack(functions.fitgauss(Frame, theta[channel], sigma[channel], fastMode))
+                    if Time < TimeMem:
+                        TTime = TimeMem + 1
+                    else:
+                        TTime = Time
+
+                    # try to determine when something is detected by using a simple filter on R2, el and psf width
+                    if not any(np.isnan(a)) and all([l[0] < n < l[1] for n, l in zip(a, limits[channel])]):
+                        if sum(detected)/len(detected) > 0.35:
+                            Fitted = True
+                            ellipticity[channel] = a[5]
+                        else:
+                            Fitted = False
+                        detected.append(True)
+                    else:
+                        Fitted = False
+                        detected.append(False)
+                    Queue.put((channel, TTime, Fitted, a[:8], PiezoPos, FocusPos, STime))
+
+                STime = time()
+                pzFactor = np.clip((STime - STimeMem) / piezoTime, 0.2, 1)
+
+                # Update the piezo position:
+                if mode == 'pid':
+                    if np.any(np.isfinite(list(ellipticity.values()))):
+                        e = np.nanmean(list(ellipticity.values()))
+                        F = -np.log(e)
+                        if np.abs(F) > 1:
+                            F = 0
+                        Pz = P(F)
+                        Z.PiezoPos = Pz
+
+                        if Pz > (G + 5):
+                            P = pid(0, G, maxStep, TimeInterval, gain)
+                else:  # Zhuang
+                    dz = {channel: np.clip(cyl.findz(e, q[channel]), -maxStep, maxStep)
+                          for channel, e in ellipticity.items()}
+                    cur_channel_idx = TTime % len(channels)
+                    next_channel_idx = (TTime + 1) % len(channels)
+                    if np.any(np.isfinite(list(dz.values()))):
+                        if feedbackMode == 0:  # Average
+                            dz = np.nanmean(list(dz.values()))
+                            if not np.isnan(dz):
+                                Z.PiezoPos -= dz * pzFactor  # reduce if going faster than piezo, avoid oscillations
+                        else:  # Alternate: save focus in current channel, apply focus to piezo for next channel
+                            if np.isfinite(dz[channels[cur_channel_idx]]):
+                                zmem[channels[cur_channel_idx]] = PiezoPos + dz[channels[cur_channel_idx]] * pzFactor
+                            elif not channels[cur_channel_idx] in zmem:
+                                zmem[channels[cur_channel_idx]] = PiezoPos
+                            if channels[next_channel_idx] in zmem:
+                                Z.PiezoPos = zmem[channels[next_channel_idx]]
+
+                # Wait for next frame:
+                while ((Z.GetTime - 1) == Time) and Z.ExperimentRunning and (not NameSpace.stop) \
+                        and (not NameSpace.quit):
+                    sleep(TimeInterval / 4)
+                if Time < TimeMem:
+                    break
+
+                TimeMem = Time
+                STimeMem = STime
+                NameSpace.run = False
+        else:
+            sleep(0.01)
+
+
+class App(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        screen = QDesktopWidget().screenGeometry()
+        self.title = 'Cylinder lens feedback GUI'
+        self.width = 640
+        self.height = 1024
+        self.right = screen.width() - self.width
+        self.top = 32
+        self.color = '#454D62'
+        self.textColor = '#FFFFFF'
+
+        self.stop = False  # Stop (waiting for) experiment
+        self.quit = False  # Quit program
+
+        self.zen = zen()
+        self.conf_filename = os.path.join(os.path.dirname(__file__), 'conf.yml')
+
+        self.q = {}
+        self.maxStep = 1
+        self.theta = {}
+
+        self.feedbackMode = 0  # Average, 1: Alternate
+        self.channels = []
+        self.calibrating = False
+
+        self.ellipse = {}
+        self.rectangle = None
+        self.MagStr = self.zen.MagStr
+        self.DLFilter = self.zen.DLFilter
+
+        self.setWindowTitle(self.title)
+        self.setMinimumSize(self.width, self.height)
+        self.setGeometry(self.right, self.top, self.width, self.height)
+
+        self.central_widget = QWidget()
+        self.layout = QGridLayout()
+        self.central_widget.setLayout(self.layout)
+
+        self.tabs = QTabWidget(self.central_widget)
+        self.settab1()
+        self.settab2()
+        self.settab3()
+        self.menus()
+        self.layout.addWidget(self.tabs)
+
+        self.Queue = Queue()
+        self.NameSpace = Manager().Namespace()
+        self.NameSpace.quit = False
+        self.NameSpace.stop = False
+        self.NameSpace.run = False
+        self.fblprocess = Process(target=feedbackloop, args=(self.Queue, self.NameSpace))
+        self.fblprocess.start()
+        self.guithread = None
+
+        self.setCentralWidget(self.central_widget)
+        self.show()
+        self.zen.wait(self, self.zen_ready)
+
+    def zen_ready(self, _):
+        self.confopen(self.conf_filename)
+        self.changeColor()
+        self.centerbox.setEnabled(True)
+        if len(self.channels):
+            self.contrunchkbx.setEnabled(True)
+            self.startbtn.setEnabled(True)
+        self.events = Events(self)
+
+    def menus(self):
+        mainMenu = self.menuBar()
+        confMenu = mainMenu.addMenu('&Configuration')
+
+        openAction = QAction('&Open', self)
+        openAction.setShortcut('Ctrl+O')
+        openAction.setStatusTip('Open configuration')
+        openAction.triggered.connect(self.confopen)
+
+        saveAction = QAction('&Save', self)
+        saveAction.setShortcut('Ctrl+S')
+        saveAction.setStatusTip('Save configuration')
+        saveAction.triggered.connect(partial(self.confsave, self.conf_filename))
+
+        saveasAction = QAction('Save &As', self)
+        saveasAction.setShortcut('Ctrl+Shift+S')
+        saveasAction.setStatusTip('Save configuration as')
+        saveasAction.triggered.connect(self.confsave)
+
+        confMenu.addAction(openAction)
+        confMenu.addAction(saveAction)
+        confMenu.addAction(saveasAction)
+
+        warpMenu = mainMenu.addMenu('&Transform')
+
+        warpAction = QAction('&Warp', self)
+        warpAction.setShortcut('Ctrl+W')
+        warpAction.setStatusTip('Save a copy of a file where the warp is corrected')
+        warpAction.triggered.connect(self.warp)
+
+        warpMenu.addAction(warpAction)
+
+    def settab1(self):
+        self.tab1 = QWidget()
+        self.tabs.addTab(self.tab1, 'Main')
+
+        self.contrunchkbx = QCheckBox('Stay primed')
+        self.contrunchkbx.setToolTip('Stay primed')
+        self.contrunchkbx.toggled.connect(self.stayprimed)
+        self.contrunchkbx.setEnabled(False)
+
+        self.centerbox = QCheckBox('Center on click')
+        self.centerbox.setToolTip('Push, then click on image')
+        self.centerbox.toggled.connect(self.tglcenterbox)
+        self.centerbox.setEnabled(False)
+
+        self.startbtn = QPushButton('Prime for experiment')
+        self.startbtn.setToolTip('Prime for experiment')
+        self.startbtn.clicked.connect(self.prime)
+        self.startbtn.setEnabled(False)
+
+        self.stopbtn = QPushButton('Stop')
+        self.stopbtn.setToolTip('Stop')
+        self.stopbtn.clicked.connect(self.setstop)
+        self.stopbtn.setEnabled(False)
+
+        self.rdb = QGUI.RadioButtons(('Zhuang', 'PID'))
+
+        self.plot = QGUI.PlotCanvas()
+        self.eplot = QGUI.SubPlot(self.plot, 611)
+        self.eplot.append_plot('middle', ':', 'gray')
+        self.eplot.append_plot('top', ':k')
+        self.eplot.append_plot('bottom', ':k')
+        self.eplot.ax.set_ylabel('Ellipticity')
+        self.eplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.iplot = QGUI.SubPlot(self.plot, 612)
+        self.iplot.ax.set_ylabel('Intensity')
+        self.iplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.splot = QGUI.SubPlot(self.plot, 613)
+        self.splot.ax.set_ylabel('Sigma (nm)')
+        self.splot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.rplot = QGUI.SubPlot(self.plot, 614)
+        self.rplot.ax.set_ylabel('R squared')
+        self.rplot.append_plot('bottom', ':k')
+        self.rplot.ax.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+        self.pplot = QGUI.SubPlot(self.plot, 615)
+        self.pplot.append_plot('fb', '-k')
+        self.pplot.ax.set_xlabel('Time (frames)')
+        self.pplot.ax.set_ylabel('Piezo pos (µm)')
+
+        self.xyplot = QGUI.SubPlot(self.plot, (6, 3, 16), '.r')
+        self.xyplot.ax.set_xlabel('x (nm)')
+        self.xyplot.ax.set_ylabel('y (nm)')
+        self.xyplot.ax.invert_yaxis()
+        self.xyplot.ax.set_aspect('equal', adjustable='datalim')
+
+        self.xzplot = QGUI.SubPlot(self.plot, (6, 3, 17), '.r')
+        self.xzplot.ax.set_xlabel('x (nm)')
+        self.xzplot.ax.set_ylabel('z (nm)')
+        self.xzplot.ax.set_aspect('equal', adjustable='datalim')
+
+        self.yzplot = QGUI.SubPlot(self.plot, (6, 3, 18), '.r')
+        self.yzplot.ax.set_xlabel('y (nm)')
+        self.yzplot.ax.set_ylabel('z (nm)')
+        self.yzplot.ax.set_aspect('equal', adjustable='datalim')
+
+        self.buttons = QHBoxLayout()
+        self.buttons.addWidget(self.contrunchkbx)
+        self.buttons.addWidget(self.centerbox)
+        self.buttons.addWidget(self.startbtn)
+        self.buttons.addWidget(self.stopbtn)
+        self.buttons.addWidget(self.rdb)
+
+        self.tab1.layout = QVBoxLayout(self.tab1)
+        self.tab1.layout.addLayout(self.buttons)
+        self.tab1.layout.addWidget(self.plot)
+
+    def settab2(self):
+        self.tab2 = QWidget()
+        self.tabs.addTab(self.tab2, 'Configuration')
+
+        self.grid = QGridLayout()
+        self.grid.setColumnStretch(0, 3)
+        self.grid.setColumnStretch(2, 3)
+
+        r = 0
+        self.grid.addWidget(QLabel('Feedback channel:'), r, 0)
+        self.rdbch = QGUI.CheckBoxes(['{}'.format(i) for i in range(10)], init_state=self.channels,
+                                     callback=self.changechannel)
+        for i, e in enumerate((664, 510, 583, 427)):
+            self.rdbch.setTextBoxValue(i, e)
+        self.grid.addWidget(self.rdbch, r, 1)
+
+        r += 1
+        self.grid.addWidget(QLabel('Feedback mode:'), r, 0)
+        self.feedbackModeDrp = QComboBox()
+        self.feedbackModeDrp.addItems(['Average', 'Alternate'])
+        self.feedbackModeDrp.currentIndexChanged.connect(self.changeFeedbackMode)
+        self.grid.addWidget(self.feedbackModeDrp, r, 1)
+
+        r += 1
+        self.cyllensdrp = []
+        self.grid.addWidget(QLabel('Cylindrical lens back:'), r, 0)
+        self.cyllensdrp.append(QComboBox())
+        self.cyllensdrp[-1].addItems(['None','A','B'])
+        self.cyllensdrp[-1].currentIndexChanged.connect(self.changeCylLens)
+        self.grid.addWidget(self.cyllensdrp[-1], r, 1)
+
+        r += 1
+        self.grid.addWidget(QLabel('Cylindrical lens front:'), r, 0)
+        self.cyllensdrp.append(QComboBox())
+        self.cyllensdrp[-1].addItems(['None','A', 'B'])
+        self.cyllensdrp[-1].setCurrentIndex(1)
+        self.cyllensdrp[-1].currentIndexChanged.connect(self.changeCylLens)
+        self.grid.addWidget(self.cyllensdrp[-1], r, 1)
+
+        r += 1
+        self.grid.addWidget(QLabel('Duolink filterset:'), r, 0)
+        self.dlfs = QComboBox()
+        self.dlfs.addItems(['488/_561_/640 & 488/_640_', '_561_/640 & empty'])
+        self.dlfs.currentIndexChanged.connect(self.changeDL)
+        self.grid.addWidget(self.dlfs, r, 1)
+
+        r += 1
+        self.grid.addWidget(QLabel('Duolink filter:'), r, 0)
+        self.chdlf = QGUI.RadioButtons(('1', '2'), init_state=self.zen.DLFilter, callback=self.changeDLF)
+        self.grid.addWidget(self.chdlf, r, 1)
+        self.dlf = QLabel(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+        self.grid.addWidget(self.dlf, r, 2)
+
+        r += 1
+        self.grid.addWidget(QLabel('Max stepsize:'), r, 0)
+        self.maxStepfld = QLineEdit()
+        self.maxStepfld.textChanged.connect(self.changemaxStep)
+        self.grid.addWidget(self.maxStepfld, r, 1)
+        self.grid.addWidget(QLabel('um'), r, 2)
+
+        r += 1
+        self.calibbtn = QPushButton('Calibrate with beads')
+        self.calibbtn.setToolTip('Calibrate with beads')
+        self.calibbtn.clicked.connect(self.calibrate)
+        self.grid.addWidget(self.calibbtn, r, 1)
+        self.calibbtn.setEnabled(False)
+
+        self.tab2.setLayout(self.grid)
+
+    def settab3(self):
+        self.tab3 = QWidget()
+        self.tabs.addTab(self.tab3, 'Map')
+
+        self.map = QGUI.SubPatchPlot(QGUI.PlotCanvas(), color=(0.6, 1, 0.8))
+        self.map.ax.invert_xaxis()
+        self.map.ax.invert_yaxis()
+        self.map.ax.set_xlabel('x')
+        self.map.ax.set_ylabel('y')
+        self.map.ax.set_aspect('equal', adjustable='datalim')
+
+        self.maprstbtn = QPushButton('Reset')
+        #self.maprstbtn.setToolTip('Prime for experiment')
+        self.maprstbtn.clicked.connect(self.resetmap)
+
+        self.tab3.layout = QVBoxLayout(self.tab3)
+        self.tab3.layout.addWidget(self.map.canvas)
+        self.tab3.layout.addWidget(self.maprstbtn)
+        LP = self.zen.StagePos
+        try:
+            FS = self.zen.FrameSize
+            pxsize = self.zen.pxsize
+            self.map.append_data(LP[0] / 1000, LP[1] / 1000, FS[0] * pxsize / 1e6, FS[1] * pxsize / 1e6)
+            self.map.draw()
+        except:
+            pass
+
+    def changeColor(self):
+        for channel in self.channels:
+            color = self.zen.ChannelColorsRGB[channel]
+            for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot,
+                         self.yzplot):
+                if channel in plot:
+                    plot.plt[channel].set_color(color)
+            for tb in ('top', 'bottom'):
+                cn = '{}{}'.format(tb, channel)
+                if cn in self.splot:
+                    self.splot.plt[cn].set_color(color)
+        camera = [self.zen.CameraFromChannelName(i) for i in self.zen.ChannelNames]
+        enabled = [False if self.cyllensdrp[c].currentText() == 'None' else True for c in camera]
+        self.rdbch.changeOptions(self.zen.ChannelNames, self.zen.ChannelColorsHex, enabled)
+
+    def changeCylLens(self):
+        self.confload()
+        self.changeColor()
+
+    def calibrate(self, *args, **kwargs):
+        if len(self.channels) == 1:
+            self.calibrating = True
+            self.calibbtn.setEnabled(False)
+            options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+            file, _ = QFileDialog.getOpenFileName(self, "Beads for calibration", "", "CZI Files (*.czi);;All Files (*)",
+                                                  options=options)
+            if file:
+
+                self.calibz_thread = qthread(cyl.calibz, self.calibrated, file, self.rdbch.textBoxValues,
+                                self.channels[0], [i.currentText() for i in self.cyllensdrp], self.calibrate_progress)
+                self.calibrate_progress(0)
+            else:
+                self.calibrating = False
+                self.calibbtn.setEnabled(True)
+
+    def calibrate_progress(self, progress):
+        self.calibbtn.setText(f'Calibrating: {progress:.0f}%')
+
+    def calibrated(self, C, MagStr, theta, q):
+        self.conf[self.getCyllens(C) + MagStr]['theta'] = float(theta)
+        self.conf[self.getCyllens(C) + MagStr]['q'] = q.tolist()
+        for channel in self.channels:
+            self.q[channel] = self.conf[self.getCmstr(channel)]['q']
+            self.theta[channel] = self.conf[self.getCmstr(channel)]['theta']
+        self.calibrating = False
+        self.calibbtn.setText('Calibrate with beads')
+        self.calibbtn.setEnabled(True)
+
+    def warp(self):
+        options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+        files, _ = QFileDialog.getOpenFileNames(self, "Image files", "", "CZI Files (*.czi);;All Files (*)",
+                                              options=options)
+        def warpfiles(files):
+            for file in files:
+                if os.path.isfile(file):
+                    warp(file)
+        self.warpthread = qthread(warpfiles, None, files)
+
+    def resetmap(self):
+        self.map.remove_data()
+
+    def confsave(self, f):
+        if not os.path.isfile(f):
+            options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+            f, _ = QFileDialog.getSaveFileName(self, "Save config file", "", "YAML Files (*.yml);;All Files (*)",
+                                               options=options)
+        if f:
+            self.conf_filename = f
+            self.conf['maxStep'] = self.maxStep
+            with open(f, 'w') as h:
+                yaml.dump(self.conf, h, default_flow_style=None)
+
+    def confopen(self, f):
+        if not os.path.isfile(f):
+            options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
+            f, _ = QFileDialog.getOpenFileName(self, "Open config file", "", "YAML Files (*.yml);;All Files (*)",
+                                               options=options)
+        if f:
+            self.q = {}
+            self.theta = {}
+            with open(f, 'r') as h:
+                self.conf = yamlload(h)
+            self.conf_filename = f
+            self.confload()
+
+    def confload(self):
+        if 'cyllenses' in self.conf:
+            values = ['None']
+            if isinstance(self.conf['cyllenses'], (list, tuple)):
+                values.extend(self.conf['cyllenses'])
+            else:
+                values.extend(re.split('\s?[,;]\s?', self.conf['cyllenses']))
+            for drp in self.cyllensdrp:
+                if values != [drp.itemText(i) for i in range(drp.count())]:
+                    drp.blockSignals(True)
+                    drp.clear()
+                    drp.addItems(values)
+                    drp.blockSignals(False)
+        for channel in self.channels:
+            self.q[channel] = self.conf[self.getCmstr(channel)]['q']
+            self.theta[channel] = self.conf[self.getCmstr(channel)]['theta']
+        if 'maxStep' in self.conf:
+            self.maxStep = self.conf['maxStep']
+            self.maxStepfld.setText('{}'.format(self.maxStep))
+        if 'style' in self.conf:
+            self.setStyleSheet(self.conf['style'])
+
+    def changeDLF(self, val):
+        #Change the duolink filter
+        if val == '1':
+            self.zen.DLFilter = 0
+        else:
+            self.zen.DLFilter = 1
+        self.changeDL()
+
+    def changemaxStep(self, val):
+        self.maxStep = float(val)
+
+    def changechannel(self, val):
+        if len(val):
+            self.channels = [int(v) for v in val]
+            self.confopen(self.conf_filename)
+            self.contrunchkbx.setEnabled(True)
+            self.startbtn.setEnabled(True)
+        else:
+            self.contrunchkbx.setEnabled(False)
+            self.startbtn.setEnabled(False)
+        if not self.calibrating:
+            self.calibbtn.setEnabled(len(self.channels) == 1)
+
+    def changeDL(self, *args):
+        #Upon change of duolink filterblock
+        self.dlf.setText(self.dlfs.currentText().split(' & ')[self.zen.DLFilter])
+
+    def changeFeedbackMode(self, idx):
+        self.feedbackMode = idx
+
+    def tglcenterbox(self):
+        self.zen.EnableEvent('LeftButtonDown')
+
+    def getCyllens(self, channel):
+        camera = self.zen.CameraFromChannelName(self.zen.ChannelNames[channel])
+        return self.cyllensdrp[camera].currentText()
+
+    def getCmstr(self, channel):
+        return self.getCyllens(channel) + self.zen.MagStr
+
+    def closeEvent(self, *args, **kwargs):
+        self.setquit()
+
+    def prime(self):
+        if self.guithread is None or not self.guithread.is_alive():
+            self.NameSpace.stop = False
+            self.guithread = qthread(target=self.run)
+
+    def stayprimed(self):
+        if self.contrunchkbx.isChecked():
+            self.prime()
+
+    def run(self, *args, **kwargs):
+        np.seterr(all='ignore');
+        sleepTime = 0.02 #update interval
+
+        Size = self.conf.get('ROISize', 48) #Size of the ROI in which the psf is fitted
+        Pos = self.conf.get('ROIPos', [0, 0])
+        fastMode = self.conf.get('fastMode', False)
+
+        gain = self.conf.get('gain', 5e-3)
+
+        self.startbtn.setEnabled(False)
+        self.stopbtn.setEnabled(True)
+        self.zen.RemoveDrawings()
+        FS = self.zen.FrameSize
+        self.rectangle = self.zen.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+        while True:
+            self.startbtn.setText('Wait for experiment to start')
+
+            #First wait for the experiment to start:
+            while (not self.zen.ExperimentRunning) and (not self.stop) and (not self.quit):
+                FS = self.zen.FrameSize
+                self.rectangle = self.zen.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+                sleep(sleepTime)
+
+            fwhm = {}
+            sigma = {}
+            limits = {}
+            for channel in self.channels:
+                wavelength = self.rdbch.textBoxValues[channel]
+                sigma[channel] = wavelength / 2 / self.zen.ObjectiveNA / self.zen.pxsize
+                fwhm[channel] = sigma[channel] * 2 * np.sqrt(2 * np.log(2))
+
+                for tb in ('top', 'bottom'):
+                    cn = '{}{}'.format(tb, channel)
+                    if not cn in self.splot:
+                        self.splot.append_plot(cn, ':', self.zen.ChannelColorsRGB[channel])
+
+                for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot):
+                    if not channel in plot:
+                        plot.append_plot(channel, '-', self.zen.ChannelColorsRGB[channel])
+
+                for plot in (self.xyplot, self.xzplot, self.yzplot):
+                    if not channel in plot:
+                        plot.append_plot(channel, '.', self.zen.ChannelColorsRGB[channel])
+
+                limits[channel] = [[-np.inf, np.inf]] * 8
+                limits[channel][2] = [fwhm[channel]/2, fwhm[channel]*2]  # fraction of fwhm
+                limits[channel][5] = [0.7, 1.3]  # ellipticity
+                limits[channel][7] = [0, np.inf]  # R2
+
+            #Experiment has started:
+            self.NameSpace.mode = self.rdb.state.lower()
+            self.NameSpace.Size = Size
+            self.NameSpace.Pos = Pos
+            self.NameSpace.gain = gain
+            self.NameSpace.channels = self.channels
+            self.NameSpace.q = self.q
+            self.NameSpace.theta = self.theta
+            self.NameSpace.maxStep = self.maxStep
+            self.NameSpace.fastMode = fastMode
+            self.NameSpace.limits = limits
+            self.NameSpace.feedbackMode = self.feedbackMode
+            self.NameSpace.sigma = sigma
+
+            self.NameSpace.run = True
+
+            FS = self.zen.FrameSize
+            self.rectangle = self.zen.DrawRectangle(*functions.cliprect(FS, *Pos, Size, Size), index=self.rectangle)
+
+            cfilename = self.zen.FileName
+            cfexists = os.path.isfile(cfilename) #whether ZEN already made the czi file (streaming)
+            if cfexists:
+                pfilename = os.path.splitext(cfilename)[0]+'.pzl'
+            else:
+                pfilename = os.path.splitext(self.conf.get('tmpPzlFile', 'd:\tmp\tmp.pzl'))[0] + \
+                            datetime.now().strftime('_%Y%m%d-%H%M%S.pzl')
+                if os.path.isfile(pfilename):
+                    os.remove(pfilename)
+            if not cfexists or (cfexists and not os.path.isfile(pfilename)):
+                with open(pfilename, 'w') as file:
+                    yaml.dump({'mode': self.NameSpace.mode, 'FeedbackChannels': self.NameSpace.channels,
+                               'CylLens': [self.cyllensdrp[i].currentText() for i in range(2)],
+                               'DLFilterSet': self.dlfs.currentText(), 'DLFilterChannel': self.zen.DLFilter,
+                               'q': self.NameSpace.q, 'theta': self.NameSpace.theta, 'maxStep': self.NameSpace.maxStep,
+                               'ROISize': Size, 'ROIPos': Pos, 'Columns': ['channel', 'frame', 'piezoPos', 'focusPos',
+                                    'x', 'y', 'fwhm', 'i', 'o', 'e', 'time']}, file, default_flow_style=None)
+                    file.write('p:\n')
+
+                    self.plot.remove_data()
+
+                    SizeX, SizeY = self.zen.FrameSize
+                    z0 = None
+
+                    self.startbtn.setText('Experiment started')
+
+                    while (self.zen.ExperimentRunning or (not self.Queue.empty())) and (not self.stop) \
+                            and (not self.quit):
+                        pxsize = self.zen.pxsize
+
+                        #Wait until feedbackloop analysed a new frame
+                        while self.zen.ExperimentRunning and (not self.stop) and (not self.quit) and self.Queue.empty():
+                            sleep(sleepTime)
+                        if not self.Queue.empty():
+                            Q = []
+                            for i in range(20):
+                                if not self.Queue.empty():
+                                    Q.append(self.Queue.get())
+                                    if z0 is None:
+                                        z0 = Q[0][5]
+                                else:
+                                    break
+
+                            for c, t, g, a, p, f, s in Q:
+                                file.write('- [{},{},{},{},'.format(c, t, p, f))
+                                file.write('{},{},{},{},{},{},'.format(*a))
+                                file.write('{}]\n'.format(s))
+
+                            channels = [q[0] for q in Q]
+                            for channel in set(channels):
+                                idx = [i for i, e in enumerate(channels) if e==channel]
+                                Time, Fitted, a, PiezoPos, FocusPos = [[Q[i][j] for i in idx] for j in range(1, 6)]
+
+                                a = np.array(a)
+                                if a.ndim>1 and a.shape[1]:
+                                    a[:,2][a[:,2] < limits[channel][2][0]/2] = np.nan
+                                    a[:,2][a[:,2] > limits[channel][2][1]*2] = np.nan
+                                    a[:,5][a[:,5] < limits[channel][5][0]/2] = np.nan
+                                    a[:,5][a[:,5] > limits[channel][5][1]*2] = np.nan
+                                    a[:,7][a[:,7] < limits[channel][7][0]*2] = np.nan
+                                    ridx = np.isnan(a[:,3]) | np.isnan(a[:,4])
+                                    a[ridx,:] = np.nan
+
+                                    zfit = np.array([-cyl.findz(e, self.q[channel]) if f else np.nan for e, f in zip(a[:, 5], Fitted)])
+                                    z = 1000*(zfit + FocusPos - z0)
+
+                                    self.eplot.range_data(Time, a[:,5], handle=channel)
+                                    self.iplot.range_data(Time, a[:,3], handle=channel)
+                                    self.splot.range_data(Time, a[:,2] / 2 / np.sqrt(2 * np.log(2)) * pxsize, handle=channel)
+                                    self.splot.range_data(Time, [limits[channel][2][0]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle=f'bottom{channel}')
+                                    self.splot.range_data(Time, [limits[channel][2][1]/2/np.sqrt(2*np.log(2))*pxsize] * len(Time), handle=f'top{channel}')
+                                    self.rplot.range_data(Time, a[:,7], handle=channel)
+                                    self.pplot.range_data(Time, zfit + FocusPos - z0, handle=channel)
+                                    self.xyplot.append_data((a[:,0] - Size / 2) * pxsize, (a[:,1] - Size / 2) * pxsize, channel)
+                                    self.xzplot.append_data((a[:,0] - Size / 2) * pxsize, z, channel)
+                                    self.yzplot.append_data((a[:,1] - Size / 2) * pxsize, z, channel)
+                                    if channel==channels[0]: #Draw these only once
+                                        self.eplot.range_data(Time, [1] * len(Time), handle='middle')
+                                        self.eplot.range_data(Time, [limits[channel][5][0]] * len(Time), handle='bottom')
+                                        self.eplot.range_data(Time, [limits[channel][5][1]] * len(Time), handle='top')
+                                        self.rplot.range_data(Time, [limits[channel][7][0]] * len(Time), handle='bottom')
+                                        self.pplot.range_data(Time, np.array(FocusPos) - z0, handle='fb')
+                                    self.plot.draw()
+
+                                    if Fitted[-1]:
+                                        X = float(a[-1,0] + (SizeX - Size) / 2 + Pos[0])
+                                        Y = float(a[-1,1] + (SizeY - Size) / 2 + Pos[1])
+                                        R = float(a[-1,2])
+                                        E = float(a[-1,5])
+                                        self.ellipse[channel] = self.zen.DrawEllipse(X, Y, R, E, self.theta[channel],
+                                                    self.zen.ChannelColorsInt[channel], index=self.ellipse.get(channel))
+                                    else:
+                                        self.zen.RemoveDrawing(self.ellipse.get(channel))
+
+                #After the experiment:
+                for ellipse in self.ellipse.values():
+                    self.zen.RemoveDrawing(ellipse)
+                if not cfexists:
+                    for _ in range(5):
+                        cfilename = functions.last_czi_file(self.conf.get('dataDir', 'd:\data'))
+                        npfilename = os.path.splitext(cfilename)[0] + '.pzl'
+                        if cfilename and not os.path.isfile(npfilename):
+                            copyfile(pfilename, npfilename)
+                            break
+                        sleep(0.25)
+            else:
+                sleep(sleepTime)
+            if not self.contrunchkbx.isChecked():
+                break
+
+        self.zen.RemoveDrawing(self.rectangle)
+        self.stop = False
+        self.startbtn.setText('Prime for experiment')
+        self.stopbtn.setEnabled(False)
+        self.startbtn.setEnabled(True)
+        self.NameSpace.run = False
+
+    def setstop(self):
+        # Stop being primed for an experiment
+        self.stopbtn.setEnabled(False)
+        self.contrunchkbx.setChecked(False)
+        self.stop = True
+        self.NameSpace.stop = True
+
+    def setquit(self):
+        # Quit the whole program
+        self.setstop()
+        self.quit = True
+        self.NameSpace.quit = True
+        self.fblprocess.join(5)
+        self.fblprocess.terminate()
+
+
+def main():
+    freeze_support()  # to enable pyinstaller to work with multiprocessing
+    app = QApplication([])
+    window = App()
+    exit(app.exec())
+
+if __name__ == '__main__':
+    main()
