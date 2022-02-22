@@ -13,13 +13,14 @@ else:
 
 
 class RadioButtons(QWidget):
-    def __init__(self, txt, init_state=0, callback=None):
+    def __init__(self, txt, init_state=0):
         QWidget.__init__(self)
         self.layout = QGridLayout()
         self.radiobutton = []
-        self.callback = callback
         self.setLayout(self.layout)
+        self.txt = txt
         self.state = txt[init_state]
+        self.callback = None
         for i, t in enumerate(txt):
             self.radiobutton.append(QRadioButton(t))
             if i == init_state:
@@ -42,28 +43,32 @@ class RadioButtons(QWidget):
             else:
                 r.setChecked(False)
 
+    def connect(self, callback=None):
+        self.callback = callback
+
 
 class CheckBoxes(QWidget):
-    def __init__(self, txt, init_state=[], callback=None):
+    def __init__(self, txt, init_state=None):
         QWidget.__init__(self)
         self.layout = QGridLayout()
         self.checkBoxes = []
         self.textBoxes = []
         self.textBoxValues = []
-        self.callback = callback
         self.setLayout(self.layout)
-        self.state = [txt[i] for i in init_state]
+        self.state = [txt[i] for i in init_state] if init_state else []
+        self.txt = txt
+        self.callback = None
+        self.callbacktext = None
         for i, t in enumerate(txt):
             self.checkBoxes.append(QCheckBox(t))
-            if i in init_state:
+            if init_state and i in init_state:
                 self.checkBoxes[-1].setChecked(True)
             self.checkBoxes[-1].text = t
             self.checkBoxes[-1].toggled.connect(self.onClicked)
             self.layout.addWidget(self.checkBoxes[-1], i, 0)
-
             self.textBoxes.append(QLineEdit())
-            self.textBoxes[-1].textChanged.connect(self.valChange(i))
             self.textBoxes[-1].setText('500')
+            self.textBoxes[-1].textChanged.connect(self.valChange(i))
             self.layout.addWidget(self.textBoxes[-1], i, 1)
             self.textBoxValues.append(500)
 
@@ -90,11 +95,16 @@ class CheckBoxes(QWidget):
                 self.textBoxValues[n] = int(val)
             except:
                 pass
+            if self.callbacktext:
+                self.callbacktext(n, val)
         return fun
 
     def setTextBoxValue(self, n, val):
         self.textBoxes[n].setText(str(val))
         self.textBoxValues[n] = val
+
+    def getTextBoxValue(self, n):
+        return self.textBoxValues[n]
 
     def onClicked(self):
         radioButton = self.sender()
@@ -110,6 +120,10 @@ class CheckBoxes(QWidget):
             self.checkBoxes[n].setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
         except:
             pass
+
+    def connect(self, callback=None, callbacktext=None):
+        self.callback = callback
+        self.callbacktext = callbacktext
 
 
 class PlotCanvas(FigureCanvas):

@@ -506,6 +506,7 @@ def EventHandler(ZEN, CLG):
         def __init__(self):
             self.clg = CLG
             self.zen = ZEN
+            self.unique_events = set()
 
         @errwrap
         def OnThrowEvent(self, *args):
@@ -516,14 +517,15 @@ def EventHandler(ZEN, CLG):
                 X = self.zen.MousePosition
                 FS = self.zen.FrameSize
                 pxsize = self.zen.pxsize
-                Pos = self.clg.conf['ROIPos']
-                d = [(FS[i]/2 - X[i] + Pos[i]) * pxsize/1000 for i in range(2)]
+                d = [(FS[i] / 2 - X[i] + self.clg.NS.roi_pos[i]) * pxsize / 1000 for i in range(2)]
                 d[1] *= -1
                 self.zen.MoveStageRel(*d)
 
         @errwrap
         def OnThrowPropertyEvent(self, *args):
-            # print(('OnThrowProperyEvent:', args))
+            # if args not in self.unique_events:
+            #     self.unique_events.add(args)
+            #     print(('OnThrowProperyEvent:', args))
             if args[1] == '2C_FilterSlider' and self.clg.DLFilter != self.zen.DLFilter:
                 self.clg.DLFilter = self.zen.DLFilter
                 self.clg.dlf.setText(self.clg.dlfs.currentText().split(' & ')[self.zen.DLFilter])
@@ -535,7 +537,9 @@ def EventHandler(ZEN, CLG):
                 self.clg.map.numel_data(LP[0]/1000, LP[1]/1000, FS[0]*pxsize/1e6, FS[1]*pxsize/1e6)
                 self.clg.map.draw()
             elif args[1] in ('DataColorPalette', 'FramesPerStack'):
-                self.clg.changeColor()
+                self.clg.change_color()
+            elif args[1] == 'TransmissionSpot':
+                self.clg.change_wavelengths()
     return EventHandlerCls
 
 

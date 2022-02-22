@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 setuptools.setup(
     name="focusfeedbackgui",
     packages=["focusfeedbackgui"],
-    version="2021.07.2",
+    version="2022.02.0",
     author="Wim Pomp @ Lenstra lab NKI",
     author_email="w.pomp@nki.nl",
     description="Live track particles.",

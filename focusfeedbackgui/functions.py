@@ -269,18 +269,21 @@ def disk(s, dim=2):
 
 
 def cliprect(FS, X, Y, Sx, Sy):
-    if Sx%2: Sx += 1
-    if Sy%2: Sy += 1
+    Sx, Sy = int(Sx + 0.5), int(Sy + 0.5)
+    if Sx % 2:
+        Sx += 1
+    if Sy % 2:
+        Sy += 1
     l = np.clip(X+FS[0]/2-Sx/2+1, 1, FS[0]-1)
     r = np.clip(X+FS[0]/2+Sx/2, 2, FS[0])
     b = np.clip(Y+FS[1]/2-Sy/2+1, 1, FS[1]-1)
     t = np.clip(Y+FS[1]/2+Sy/2, 2, FS[1])
     Sx, Sy = r-l+1, t-b+1
-    if Sx%2 and Sy%2:
+    if Sx % 2 and Sy % 2:
         return cliprect(FS, X, Y, Sx-2, Sy-2)
-    elif Sx%2:
+    elif Sx % 2:
         return cliprect(FS, X, Y, Sx-2, Sy)
-    elif Sy%2:
+    elif Sy % 2:
         return cliprect(FS, X, Y, Sx, Sy-2)
     else:
         return float((r+l-1)/2), float((t+b-1)/2), float(Sx), float(Sy)

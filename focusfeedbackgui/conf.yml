@@ -1,4 +1,5 @@
 maxStep: 0.1 #um
+maxStepxy: 1 #px
 ROISize: 48 #px
 ROIPos: [0, 0] #px from center
 dataDir: 'd:\data' #where to find the czi to attach the pzl to
