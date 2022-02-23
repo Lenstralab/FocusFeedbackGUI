@@ -8,6 +8,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_pdf import PdfPages
 import skimage.filters
 from parfor import parfor
+from tllab_common.wimread import imread
 import warnings
 warnings.filterwarnings('ignore', message='Starting a Matplotlib GUI outside of the main thread will likely fail.')
 
@@ -15,11 +16,9 @@ warnings.filterwarnings('ignore', message='Starting a Matplotlib GUI outside of 
 if __package__ == '':
     import functions as fn
     import utilities
-    from imread import imread
 else:
     from . import functions as fn
     from . import utilities
-    from .imread import imread
 
 
 A4 = (8.27, 11.69)

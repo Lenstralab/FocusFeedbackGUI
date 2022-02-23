@@ -16,9 +16,8 @@ if __package__ == '':
     import QGUI
     import cylinderlens as cyl
     import functions
-    from utilities import qthread, yamlload
+    from utilities import qthread, yamlload, warp
     from pid import pid
-    from imread import warp
     try:
         from zen import zen, Events
     except Exception:
@@ -27,9 +26,8 @@ else:
     from . import QGUI
     from . import cylinderlens as cyl
     from . import functions
-    from .utilities import qthread, yamlload
+    from .utilities import qthread, yamlload, warp
     from .pid import pid
-    from .imread import warp
     try:
         from .zen import zen, Events
     except Exception:
@@ -545,11 +543,11 @@ class App(QMainWindow, UiMainWindow):
         options = (QFileDialog.Options() | QFileDialog.DontUseNativeDialog)
         files, _ = QFileDialog.getOpenFileNames(self, "Image files", "", "CZI Files (*.czi);;All Files (*)",
                                               options=options)
-        def warpfiles(files):
+        def warp_files(files):
             for file in files:
                 if os.path.isfile(file):
                     warp(file)
-        self.warpthread = qthread(warpfiles, None, files)
+        self.warpthread = qthread(warp_files, None, files)
 
     def resetmap(self):
         self.map.remove_data()

@@ -4,7 +4,6 @@ from argparse import ArgumentParser
 import focusfeedbackgui
 from focusfeedbackgui.__main__ import main
 from focusfeedbackgui.cylinderlens import calibz
-from focusfeedbackgui.imread import imread
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Tracking using a cylindrical lens.')
@@ -24,6 +23,6 @@ if __name__ == '__main__':
     elif args.mode.lower().startswith('cali'):
         focusfeedbackgui.cylinderlens.calibz(args.file, args.emission, args.channel)
     elif args.mode.lower().startswith('trans') or args.mode.lower().startswith('warp'):
-        focusfeedbackgui.imread.warp(args.file, args.out, args.channel, args.zslice, args.time, args.split, args.force)
+        focusfeedbackgui.utilities.warp(args.file, args.out, args.channel, args.zslice, args.time, args.split, args.force)
     elif args.mode.lower().startswith('info'):
-        focusfeedbackgui.imread.info(args.file)
+        focusfeedbackgui.utilities.info(args.file)

@@ -3,6 +3,8 @@ from PyQt5 import QtCore
 from traceback import format_exc
 import yaml
 import re
+import os
+from tllab_common.wimread import imread
 
 
 def yamlload(f):
@@ -133,3 +135,24 @@ def findrange(x, s):
         return x[i] + s / 2
     else:
         return x[i - l] - s / 2
+
+
+def warp(file, out=None, channel=None, zslice=None, time=None, split=False, force=True):
+    if os.path.exists(file):
+        with imread(file, transform=True) as im:
+            if out is None:
+                out = file[:-4] + '_transformed.tif'
+            out = os.path.abspath(out)
+            if not os.path.exists(os.path.dirname(out)):
+                os.makedirs(os.path.dirname(out))
+            if os.path.exists(out) and not force:
+                print('File {} exists already, add the -f flag if you want to overwrite it.'.format(out))
+            else:
+                im.save_as_tiff(out, channel, zslice, time, split)
+    else:
+        print('File does not exist.')
+
+
+def info(file):
+    with imread(file) as im:
+        print(im.summary)

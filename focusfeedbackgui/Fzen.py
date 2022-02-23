@@ -3,11 +3,7 @@
 import os
 import numpy as np
 from re import search
-
-if __package__ == '':
-    from imread import imread
-else:
-    from .imread import imread
+from tllab_common.wimread import imread
 
 
 def Events(*args, **kwargs):
@@ -23,7 +19,7 @@ class zen:
 
     def __init__(self):
         self.im = imread(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'files',
-                                      'CE9_2021_10_14__13_31_47.czi'))
+                                      'YTL639_2020_08_05__16_11_45.czi'))
 
     def __enter__(self):
         return self
