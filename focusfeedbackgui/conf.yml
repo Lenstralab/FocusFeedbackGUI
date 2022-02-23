@@ -1,3 +1,4 @@
+microscope: zen_black
 maxStep: 0.1 #um
 maxStepxy: 1 #px
 ROISize: 48 #px
@@ -7,24 +8,6 @@ tmpPzlFile: 'd:\tmp\tmp.pzl'
 fastMode: False #fast fitting
 gain: 5e-3 #gain for PID mode
 cyllenses: 100x, 63x
-style: >
-  QMainWindow { background-color: #454D62 }
-  QWidget { background-color: #454D62 }
-  QCheckBox { color: #FFFFFF }
-  QCheckBox:disabled { color: #262E3E }
-  QCheckBox::indicator:disabled { background-color: #262E3E }
-  QRadioButton { color: #FFFFFF }
-  QPushButton { color: #FFFFFF }
-  QPushButton:disabled { color: #262E3E }
-  QLineEdit { color: #FFFFFF }
-  QLabel { color: #FFFFFF }
-  QComboBox { color: #FFFFFF }
-  QAbstractItemView { color: #FFFFFF }
-  QMenu { color: #FFFFFF }
-  QMenuBar { color: #FFFFFF }
-  QTabWidget { border-color: #454D62 }
-  QTabBar::tab { background-color: #262E3E; color: #FFFFFF }
-  QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF }
 
 100x100x10: # LJ1558RM, 300 mm
   q: [1.11350728, -0.11643823,  0.15658226,  1.26478436,  0.48382135,  0.41210216,  3.73683468, 21.41761362,  0.97043002]

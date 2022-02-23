@@ -1,15 +1,13 @@
 from PyQt5.QtWidgets import *
+import warnings
 import numpy as np
+from traceback import format_exc
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib import rcParams, pyplot
 rcParams.update({'figure.autolayout': True})
-np.seterr(all='ignore');
-
-if __package__ == '':
-    from utilities import errwrap
-else:
-    from .utilities import errwrap
+np.seterr(all='ignore')
+from focusfeedbackgui.utilities import error_wrap
 
 
 class RadioButtons(QWidget):
@@ -33,7 +31,7 @@ class RadioButtons(QWidget):
         radioButton = self.sender()
         if radioButton.isChecked():
             self.state = radioButton.text
-            if not self.callback is None:
+            if self.callback is not None:
                 self.callback(radioButton.text)
 
     def changeState(self, state):
@@ -58,7 +56,7 @@ class CheckBoxes(QWidget):
         self.state = [txt[i] for i in init_state] if init_state else []
         self.txt = txt
         self.callback = None
-        self.callbacktext = None
+        self.callback_text = None
         for i, t in enumerate(txt):
             self.checkBoxes.append(QCheckBox(t))
             if init_state and i in init_state:
@@ -76,8 +74,8 @@ class CheckBoxes(QWidget):
         callback = False
         n = len(txt)
         for i, (cb, tb) in enumerate(zip(self.checkBoxes, self.textBoxes)):
-            cb.setVisible(i<n)
-            tb.setVisible(i<n)
+            cb.setVisible(i < n)
+            tb.setVisible(i < n)
 
         for cb, t, c, e in zip(self.checkBoxes, txt, colors, enabled):
             cb.setText(t)
@@ -86,17 +84,17 @@ class CheckBoxes(QWidget):
                 cb.setChecked(False)
                 callback = True
             cb.setEnabled(e)
-        if callback and not self.callback is None:
+        if callback and self.callback is not None:
             self.callback(self.state)
 
     def valChange(self, n):
         def fun(val):
             try:
                 self.textBoxValues[n] = int(val)
-            except:
-                pass
-            if self.callbacktext:
-                self.callbacktext(n, val)
+            except Exception:
+                warnings.warn(f'\n{format_exc()}')
+            if self.callback_text:
+                self.callback_text(n, val)
         return fun
 
     def setTextBoxValue(self, n, val):
@@ -107,23 +105,23 @@ class CheckBoxes(QWidget):
         return self.textBoxValues[n]
 
     def onClicked(self):
-        radioButton = self.sender()
-        if radioButton.isChecked():
-            self.state.append(radioButton.text)
+        radio_button = self.sender()
+        if radio_button.isChecked():
+            self.state.append(radio_button.text)
         else:
-            self.state.remove(radioButton.text)
-        if not self.callback is None:
+            self.state.remove(radio_button.text)
+        if self.callback is not None:
             self.callback(self.state)
 
     def changeColor(self, n, color):
         try:
             self.checkBoxes[n].setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
-        except:
-            pass
+        except Exception:
+            warnings.warn(f'\n{format_exc()}')
 
     def connect(self, callback=None, callbacktext=None):
         self.callback = callback
-        self.callbacktext = callbacktext
+        self.callback_text = callbacktext
 
 
 class PlotCanvas(FigureCanvas):
@@ -163,8 +161,7 @@ class SubPlot:
     def append_data(self, x, y=None, handle=0):
         if y is None:
             y = x
-            # x = errwrap(np.nanmax, -1, self.plt.get_xdata()) + np.arange(errwrap(len, 1, x)) + 1
-            x = errwrap(np.nanmax, -1)(self.plt.get_xdata()) + np.arange(errwrap(len, 1)(x)) + 1
+            x = error_wrap(np.nanmax, -1)(self.plt[handle].get_xdata()) + np.arange(error_wrap(len, 1)(x)) + 1
         x = np.hstack((self.plt[handle].get_xdata(), x))
         y = np.hstack((self.plt[handle].get_ydata(), y))
         self.plt[handle].set_xdata(x)
@@ -172,12 +169,12 @@ class SubPlot:
         self.ax.relim()
         self.ax.autoscale_view()
 
-    def range_data(self, x, y, range=250, handle=0):
+    def range_data(self, x, y, lim=250, handle=0):
         margin = 0.05
         x = np.hstack((self.plt[handle].get_xdata(), x))
         y = np.hstack((self.plt[handle].get_ydata(), y))
-        y = y[x > np.nanmax(x) - range]
-        x = x[x > np.nanmax(x) - range]
+        y = y[x > np.nanmax(x) - lim]
+        x = x[x > np.nanmax(x) - lim]
 
         # x, y = zip(*[i for i in sorted(zip(x, y))])
 
@@ -187,24 +184,24 @@ class SubPlot:
         x = np.hstack([plt.get_xdata() for plt in self.plt.values()])
         xmin, xmax = np.nanmin(x), np.nanmax(x)
         deltax = (xmax - xmin) * margin
-        if np.isfinite(deltax) and not xmin==xmax:
+        if np.isfinite(deltax) and not xmin == xmax:
             self.ax.set_xlim(xmin - deltax, xmax + deltax)
 
         y = np.hstack([plt.get_ydata() for plt in self.plt.values()])
-        if np.any(np.isfinite((y))):
+        if np.any(np.isfinite(y)):
             ymin, ymax = np.nanmin(y), np.nanmax(y)
         else:
             ymin, ymax = np.nan, np.nan
         deltay = (ymax - ymin) * margin
-        if np.isfinite(deltay) and not ymin==ymax:
+        if np.isfinite(deltay) and not ymin == ymax:
             self.ax.set_ylim(ymin - deltay, ymax + deltay)
         self.ax.autoscale_view()
 
-    def numel_data(self, x, y, range=10000, handle=0):
-        x = np.hstack((self.plt.get_xdata(), x))
-        y = np.hstack((self.plt.get_ydata(), y))
-        self.plt[handle].set_ydata(y[-range:])
-        self.plt[handle].set_xdata(x[-range:])
+    def numel_data(self, x, y, lim=10000, handle=0):
+        x = np.hstack((self.plt[handle].get_xdata(), x))
+        y = np.hstack((self.plt[handle].get_ydata(), y))
+        self.plt[handle].set_ydata(y[-lim:])
+        self.plt[handle].set_xdata(x[-lim:])
         self.ax.relim()
         self.ax.autoscale_view()
 
@@ -228,9 +225,9 @@ class SubPatchPlot:
         self.rects = []
         self.color = color
 
-    def numel_data(self, x, y, dx, dy=None, range=1000):
+    def numel_data(self, x, y, dx, dy=None, lim=1000):
         if self.rects:
-            while len(self.rects) >= range:
+            while len(self.rects) >= lim:
                 self.rects.pop(0).remove()
         self.append_data(x, y, dx, dy)
 

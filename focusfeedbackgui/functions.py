@@ -4,10 +4,7 @@ import scipy.special
 import scipy.ndimage
 from numba import jit
 import os
-import re
 from time import time
-from inspect import stack
-from numbers import Number
 from glob import glob
 
 
@@ -55,7 +52,7 @@ def erf2(x):
 
 @jit(nopython=True, nogil=True)
 def gaussian7grid(p, xv, yv):
-    """ p: [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
+    """ p: [x, y, fwhm, area, offset, ellipticity, angle towards x-axis]
         xv, yv = meshgrid(np.arange(Y),np.arange(X))
             calculation of meshgrid is done outside, so it doesn't
             have to be done each time this function is run
@@ -74,14 +71,14 @@ def gaussian7grid(p, xv, yv):
     return p[3]/4*(erf2(x+dx)-erf2(x-dx))*(erf2(y+dy)-erf2(y-dy))+p[4]
 
 
-def gaussian(p, X, Y):
+def gaussian(p, x, y):
     """ p: [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
     default ellipticity & angle: 1 resp. 0
     X,Y: size of image
     reimplemented for numba, small deviations from true result
         possible because of reimplementation of erf for numba
     """
-    xv, yv = meshgrid(np.arange(Y) - p[0], np.arange(X) - p[1])
+    xv, yv = meshgrid(np.arange(y) - p[0], np.arange(x) - p[1])
     p = tuple([float(i) for i in p])
     return gaussian7grid(p, xv, yv)
 
@@ -128,9 +125,11 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         p[0:2] -= cs[:, 0]
         xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
         if theta is None:  # theta free
-            g = lambda pf: np.sum((jm - gaussian7grid(pf, xv, yv)) ** 2)
+            def g(pf):
+                return np.sum((jm - gaussian7grid(pf, xv, yv)) ** 2)
         else:  # theta fixed
-            g = lambda pf: np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv))**2)
+            def g(pf):
+                return np.sum((jm - gaussian7grid(np.append(pf, theta), xv, yv))**2)
             p = p[:6]
         r = scipy.optimize.minimize(g, p, options={'disp': False, 'maxiter': 1e5})
         q = r.x
@@ -139,7 +138,7 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
     q[2] = np.abs(q[2])
     q[5] = np.abs(q[5])
     r2 = 1 - np.nansum((jm-gaussian7grid(q, xv, yv))**2) / np.nansum((jm-np.nanmean(jm))**2)
-    dq = fminerr(lambda p: gaussian7grid(p, xv, yv), q, jm)[1]
+    dq = fminerr(lambda p0: gaussian7grid(p0, xv, yv), q, jm)[1]
     q[0:2] += cs[:, 0]
     if err:
         return q, dq, r2
@@ -206,20 +205,20 @@ def fminerr(fun, a, y, dy=None):
     else:
         dy = np.array(dy).flatten()
     diffstep = 1e0
-    nData = np.size(y)
-    nPar = np.size(a)
+    n_data = np.size(y)
+    n_parameters = np.size(a)
     dy = 1 / (dy + eps)
     f0 = np.array(fun(a)).flatten()
-    chisq = np.sum(((f0 - y) * dy) ** 2) / (nData - nPar)
+    chi_squared = np.sum(((f0 - y) * dy) ** 2) / (n_data - n_parameters)
 
     # calculate R^2
     sstot = np.sum((y - np.nanmean(y)) ** 2)
     ssres = np.sum((y - f0) ** 2)
-    R2 = 1 - ssres / sstot
+    r_squared = 1 - ssres / sstot
 
     # calculate derivatives
-    deriv = np.zeros((nData, nPar))
-    for i in range(nPar):
+    deriv = np.zeros((n_data, n_parameters))
+    for i in range(n_parameters):
         ah = a.copy()
         ah[i] = a[i] * (1 + diffstep) + eps
         f = np.array(fun(ah)).flatten()
@@ -231,11 +230,8 @@ def fminerr(fun, a, y, dy=None):
         invhesse = np.diag(np.linalg.inv(hesse))
     else:
         invhesse = np.diag(np.linalg.pinv(hesse))
-    # invhesse[invhesse < 0] = np.nan
-    da = np.sqrt(chisq * invhesse)
-        # da = np.full(np.shape(a),np.nan)
-        # print('Hessian not invertible, size: {0}, rank: {1}'.format(np.shape(hesse)[0],np.linalg.matrix_rank(hesse)))
-    return chisq, da, R2
+    da = np.sqrt(chi_squared * invhesse)
+    return chi_squared, da, r_squared
 
 
 def crop(im, x, y, m=np.nan):
@@ -246,17 +242,19 @@ def crop(im, x, y, m=np.nan):
     x = np.array(x).astype(int)
     y = np.array(y).astype(int)
     S = np.array(np.shape(im))
-    R = np.array([[min(y),max(y)],[min(x),max(x)]]).astype(int)
+    R = np.array([[min(y), max(y)], [min(x), max(x)]]).astype(int)
     r = R.copy()
-    r[R[:,0]<1,0] = 1
-    r[R[:,1]>S,1] = S[R[:,1]>S]
-    jm = im[r[0,0]:r[0,1],r[1,0]:r[1,1]]
-    jm = np.concatenate((np.full((r[0,0]-R[0,0],np.shape(jm)[1]),m),jm,np.full((R[0,1]-r[0,1],np.shape(jm)[1]),m)),0)
-    return np.concatenate((np.full((np.shape(jm)[0],r[1,0]-R[1,0]),m),jm,np.full((np.shape(jm)[0],R[1,1]-r[1,1]),m)),1)
+    r[R[:, 0] < 1, 0] = 1
+    r[R[:, 1] > S, 1] = S[R[:, 1] > S]
+    jm = im[r[0, 0]:r[0, 1], r[1, 0]:r[1, 1]]
+    jm = np.concatenate((np.full((r[0, 0] - R[0, 0], np.shape(jm)[1]), m),
+                         jm, np.full((R[0, 1] - r[0, 1], np.shape(jm)[1]), m)), 0)
+    return np.concatenate((np.full((np.shape(jm)[0], r[1, 0] - R[1, 0]), m),
+                           jm, np.full((np.shape(jm)[0], R[1, 1] - r[1, 1]), m)), 1)
 
 
 def disk(s, dim=2):
-    """ make a diskshaped structural element to be used with
+    """ make a disk-shaped structural element to be used with
         morphological functions
         wp@tl20190709
     """
@@ -264,39 +262,39 @@ def disk(s, dim=2):
     c = (s-1)/2
     mg = np.meshgrid(*(range(s),)*dim)
     d2 = np.sum([(i-c)**2 for i in mg], 0)
-    d[d2<s**2/4] = 1
+    d[d2 < s**2/4] = 1
     return d
 
 
-def cliprect(FS, X, Y, Sx, Sy):
-    Sx, Sy = int(Sx + 0.5), int(Sy + 0.5)
-    if Sx % 2:
-        Sx += 1
-    if Sy % 2:
-        Sy += 1
-    l = np.clip(X+FS[0]/2-Sx/2+1, 1, FS[0]-1)
-    r = np.clip(X+FS[0]/2+Sx/2, 2, FS[0])
-    b = np.clip(Y+FS[1]/2-Sy/2+1, 1, FS[1]-1)
-    t = np.clip(Y+FS[1]/2+Sy/2, 2, FS[1])
-    Sx, Sy = r-l+1, t-b+1
-    if Sx % 2 and Sy % 2:
-        return cliprect(FS, X, Y, Sx-2, Sy-2)
-    elif Sx % 2:
-        return cliprect(FS, X, Y, Sx-2, Sy)
-    elif Sy % 2:
-        return cliprect(FS, X, Y, Sx, Sy-2)
+def clip_rectangle(frame_size, x, y, width, height):
+    width, height = int(width + 0.5), int(height + 0.5)
+    if width % 2:
+        width += 1
+    if height % 2:
+        height += 1
+    left = np.clip(x + frame_size[0] / 2 - width / 2 + 1, 1, frame_size[0] - 1)
+    right = np.clip(x + frame_size[0] / 2 + width / 2, 2, frame_size[0])
+    bottom = np.clip(y + frame_size[1] / 2 - height / 2 + 1, 1, frame_size[1] - 1)
+    top = np.clip(y + frame_size[1] / 2 + height / 2, 2, frame_size[1])
+    width, height = right - left + 1, top - bottom + 1
+    if width % 2 and height % 2:
+        return clip_rectangle(frame_size, x, y, width - 2, height - 2)
+    elif width % 2:
+        return clip_rectangle(frame_size, x, y, width - 2, height)
+    elif height % 2:
+        return clip_rectangle(frame_size, x, y, width, height - 2)
     else:
-        return float((r+l-1)/2), float((t+b-1)/2), float(Sx), float(Sy)
+        return float((right+left-1)/2), float((top+bottom-1)/2), float(width), float(height)
 
 
-def last_czi_file(folder='d:\data', t=np.inf):
+def last_czi_file(folder=r'd:\data', t=np.inf):
     """ finds last created czi file in folder created not more than t seconds ago
         wp@tl20191218
     """
-    fname = glob(os.path.join(folder, '**', '*.czi'), recursive=True)
-    tm = [os.path.getctime(f) for f in fname]
+    files = glob(os.path.join(folder, '**', '*.czi'), recursive=True)
+    tm = [os.path.getctime(file) for file in files]
     t_newest = np.max(tm)
     if time() - t_newest > t:
         return ''
     else:
-        return fname[np.argmax(tm)]
+        return files[np.argmax(tm)]

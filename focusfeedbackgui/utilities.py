@@ -1,13 +1,14 @@
-import numpy as np
-from PyQt5 import QtCore
-from traceback import format_exc
 import yaml
 import re
 import os
+import warnings
+import numpy as np
+from PyQt5 import QtCore
+from traceback import format_exc
 from tllab_common.wimread import imread
 
 
-def yamlload(f):
+def yaml_load(f):
     # fix loading scientific notation without decimal separator
     loader = yaml.SafeLoader
     loader.add_implicit_resolver(
@@ -23,7 +24,7 @@ def yamlload(f):
     return yaml.load(f, loader)
 
 
-class qthread(QtCore.QThread):
+class QThread(QtCore.QThread):
     done = QtCore.pyqtSignal(object)
 
     def __init__(self, target, callback=None, *args, **kwargs):
@@ -40,6 +41,7 @@ class qthread(QtCore.QThread):
         try:
             self.done.emit((0, self.target(*self.args, **self.kwargs)))
         except Exception:
+            warnings.warn(f'\n{format_exc()}')
             self.done.emit((1, format_exc()))
 
     def join(self, state):
@@ -55,16 +57,17 @@ class qthread(QtCore.QThread):
             self.callback(*args)
 
 
-def errwrap(fun, default=None):
+def error_wrap(fun, default=None):
     def e(*args, **kwargs):
         try:
             return fun(*args, **kwargs)
-        except:
+        except Exception:
+            warnings.warn(f'\n{format_exc()}')
             return default
     return e
 
 
-def maskpk(pk, mask):
+def mask_pk(pk, mask):
     """ remove points in nx2 array which are located outside mask
         wp@tl20190709
     """
@@ -76,21 +79,21 @@ def maskpk(pk, mask):
     return pk[idx, :]
 
 
-def weightedmean(x, dx):
+def weighted_mean(x, dx):
     s2 = 1 / (np.nansum(dx ** -2))
     return s2 * np.nansum(x / dx ** 2), np.sqrt(s2)
 
 
-def circ_weightedmean(t, dt=1, T=2*np.pi):
-    t *= 2 * np.pi / T
+def circ_weighted_mean(t, dt=1, period=2 * np.pi):
+    t *= 2 * np.pi / period
     dt = np.clip(dt, 1e-15, np.inf)
-    S = np.sum(np.sin(t) / dt)
-    C = np.sum(np.cos(t) / dt)
-    return np.arctan2(S, C) * T / 2 / np.pi, np.sqrt(np.sum((C * np.cos(t) + S * np.sin(t)) ** 2)) / (
-                S ** 2 + C ** 2) * T / 2 / np.pi
+    sin = np.sum(np.sin(t) / dt)
+    cos = np.sum(np.cos(t) / dt)
+    return np.arctan2(sin, cos) * period / 2 / np.pi, np.sqrt(np.sum((cos * np.cos(t) + sin * np.sin(t)) ** 2)) / (
+                sin ** 2 + cos ** 2) * period / 2 / np.pi
 
 
-def rmnan(*a):
+def rm_nan(*a):
     a = list(a)
     idx = np.full(0, 0)
     for i in range(len(a)):
@@ -107,39 +110,46 @@ def rmnan(*a):
     return tuple(a)
 
 
-def outliers(D, keep=True):
-    q2 = np.nanmedian(np.array(D).flatten())
-    q1 = np.nanmedian(D[D < q2])
-    q3 = np.nanmedian(D[D > q2])
+def outliers(data, keep=True):
+    q2 = np.nanmedian(np.array(data).flatten())
+    q1 = np.nanmedian(data[data < q2])
+    q3 = np.nanmedian(data[data > q2])
     lb = 4 * q1 - 3 * q3
     ub = 4 * q3 - 3 * q1
 
     if keep:
-        idx = np.where((D >= lb) & (D <= ub))
+        idx = np.where((data >= lb) & (data <= ub))
     else:
-        idx = np.where(~((D >= lb) & (D <= ub)))
+        idx = np.where(~((data >= lb) & (data <= ub)))
     return idx
 
 
-def findrange(x, s):
+def find_range(x, s):
     """ Finds the range (x-s/2;x+s/2) with the biggest number of points in x
         wp@tl20190301
     """
-    l = len(x)
-    t = np.zeros(2 * l)
+    length = len(x)
+    t = np.zeros(2 * length)
     for i, y in enumerate(x):
         t[i] = len(x[(x >= y) & (x <= (y + s))])
-        t[i + l] = len(x[(x >= (y - s)) & (x <= y)])
+        t[i + length] = len(x[(x >= (y - s)) & (x <= y)])
     i = np.argmax(t)
-    if i < l:
+    if i < length:
         return x[i] + s / 2
     else:
-        return x[i - l] - s / 2
+        return x[i - length] - s / 2
 
 
-def warp(file, out=None, channel=None, zslice=None, time=None, split=False, force=True):
+def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, force=True, transform_files=None):
+    if transform_files is not None and transform_files[0].endswith('.yml'):
+        beadfiles = None
+        transform = transform_files[0]
+    else:
+        beadfiles = transform_files
+        transform = True
+
     if os.path.exists(file):
-        with imread(file, transform=True) as im:
+        with imread(file, transform=transform, beadfile=beadfiles) as im:
             if out is None:
                 out = file[:-4] + '_transformed.tif'
             out = os.path.abspath(out)
@@ -148,7 +158,7 @@ def warp(file, out=None, channel=None, zslice=None, time=None, split=False, forc
             if os.path.exists(out) and not force:
                 print('File {} exists already, add the -f flag if you want to overwrite it.'.format(out))
             else:
-                im.save_as_tiff(out, channel, zslice, time, split)
+                im.save_as_tiff(out, channel, z_slice, time, split)
     else:
         print('File does not exist.')
 
