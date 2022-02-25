@@ -5,7 +5,6 @@ from focusfeedbackgui.microscopes import MicroscopeClass
 
 class Microscope(MicroscopeClass):
     def __init__(self, *args, **kwargs):
-        super().__init__()
         self.im = imread(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'files',
                                       'YTL639_2020_08_05__16_11_45.czi'))
         self.frame_size = self.im.shape[:2]

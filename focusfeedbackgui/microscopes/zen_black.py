@@ -7,9 +7,12 @@ from threading import get_ident
 from functools import partial
 from dataclasses import dataclass
 from enum import Enum
-from focusfeedbackgui.microscopes import MicroscopeClass
+from collections import OrderedDict
+from PyQt5 import QtCore
 from focusfeedbackgui.utilities import QThread, error_wrap
 from focusfeedbackgui.__main__ import App
+from focusfeedbackgui.microscopes import MicroscopeClass
+
 
 # global property to keep track of indices of drawings in ZEN across threads
 drawing_list = []
@@ -44,7 +47,6 @@ class Cst(Enum):
 
 class Microscope(MicroscopeClass):
     def __init__(self, *args, event_handler=None, **kwargs):
-        super().__init__()
         self.event_handler = event_handler
         self._zen_vba = {}
         self._id = {}
@@ -66,19 +68,6 @@ class Microscope(MicroscopeClass):
         if zen_id in self._id:
             self._id.pop(zen_id)
 
-    @staticmethod
-    def events(app):
-        def fun():
-            with Microscope(event_handler=partial(event_handler_factory, app=app)) as z:
-                m = Mem(z, app, [None, False], [None, False], False)
-                z.enable_event('LeftButtonDown')
-                while not app.quit:
-                    sleep(.01)
-                    pythoncom.PumpWaitingMessages()
-                    m.checks()
-
-        return QThread(fun)
-
     @property
     def zen(self):
         return self.reconnect()[0]
@@ -88,8 +77,8 @@ class Microscope(MicroscopeClass):
         return self.reconnect()[1]
 
     def reconnect(self):
-        zen_id = get_ident()
-        if zen_id not in self._zen_vba:
+        thread_id = get_ident()
+        if thread_id not in self._zen_vba:
             pythoncom.CoInitialize()
             for zen_id, vbz_id in self._id.values():  # First try co-marshalling
                 try:
@@ -105,15 +94,16 @@ class Microscope(MicroscopeClass):
                 if self.event_handler is None:
                     vba = win32com.client.Dispatch('Lsm5Vba.Application')
                 else:
-                    vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler(self))
-                self._id[zen_id] = (pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, zen),
-                                    pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, vba))
-            self._zen_vba[zen_id] = (zen, vba)
-        return self._zen_vba[zen_id]
+                    vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler)
+                    # vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler(self))
+                self._id[thread_id] = (pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, zen),
+                                       pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, vba))
+            self._zen_vba[thread_id] = (zen, vba)
+        return self._zen_vba[thread_id]
 
     @property
     def ready(self):
-        return self.vba.Lsm5.DsRecordingActiveDocObject is not None
+        return self.current_doc is not None
 
     def set_analog_mode(self, val=True):
         self.vba.Lsm5.ExternalCpObject().pHardwareObjects.pHighResFoc().bSetAnalogMode(val)
@@ -152,12 +142,12 @@ class Microscope(MicroscopeClass):
 
     @property
     def is_busy(self):
-        return self.vba.Lsm5.DsRecordingActiveDocObject.is_busy() if self.ready else True
+        return self.current_doc.is_busy() if self.ready else True
 
     @property
     def mouse_pos(self):
         if self.ready:
-            x = self.vba.Lsm5.DsRecordingActiveDocObject.GetCurrentMousePosition()
+            x = self.current_doc.GetCurrentMousePosition()
             return x[5] + 1, x[4] + 1
         else:
             return 0, 0
@@ -165,14 +155,14 @@ class Microscope(MicroscopeClass):
     @property
     def objective_magnification(self):
         try:
-            return float(search(r'\d+x', self.zen.GUI.Acquisition.AcquisitionMode.Objective.ByName).group()[:-1])
+            return float(search(r'\d+x', self.current_settings.Objective).group()[:-1])
         except Exception:
             return 0
 
     @property
     def objective_na(self):
         try:
-            return float(search(r'\d\.\d+', self.zen.GUI.Acquisition.AcquisitionMode.Objective.ByName).group())
+            return float(search(r'\d\.\d+', self.current_settings.Objective).group())
         except Exception:
             return 1
 
@@ -194,7 +184,7 @@ class Microscope(MicroscopeClass):
     @property
     def title(self):
         if self.ready:
-            return self.vba.Lsm5.DsRecordingActiveDocObject.title()
+            return self.current_doc.Title()
         else:
             return ''
 
@@ -205,14 +195,14 @@ class Microscope(MicroscopeClass):
     @property
     def frame_size(self):
         if self.ready:
-            scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
+            scan_doc = self.current_doc
             return scan_doc.GetDimensionX(), scan_doc.GetDimensionY()
         else:
             return 0, 0
 
     def get_frame_centered(self, channel=1, size=32):
         size = 2 * int((size + 1) / 2)  # Ensure evenness
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
+        scan_doc = self.current_doc
         x_max = scan_doc.GetDimensionX()
         y_max = scan_doc.GetDimensionY()
 
@@ -228,7 +218,7 @@ class Microscope(MicroscopeClass):
     def get_frame(self, channel=1, x=None, y=None, width=32, height=32):
         width = 2 * int((width + 1) / 2)  # Ensure evenness
         height = 2 * int((height + 1) / 2)
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
+        scan_doc = self.current_doc
         x_max = scan_doc.GetDimensionX()
         y_max = scan_doc.GetDimensionY()
         if x is None:
@@ -248,18 +238,74 @@ class Microscope(MicroscopeClass):
 
     @property
     def channel_colors_int(self):
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
-        return [scan_doc.ChannelColor(channel) for channel in range(self.n_channels)]
+        # We cannot get colors from settings without disturbing zen's gui, so get them from the last document instead
+        scan_doc = self.current_doc
+        return [scan_doc.ChannelColor(channel) for channel in self.active_channels.keys()]
+
+    @property
+    def doc_channel_colors_int(self):
+        scan_doc = self.current_doc
+        return [scan_doc.ChannelColor(channel) for channel in range(self.doc_n_channels)]
 
     @property
     def channel_names(self):
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
-        return [scan_doc.ChannelName(i) for i in range(self.n_channels)]
+        return list(self.active_channels.values())
+
+    @property
+    def doc_channel_names(self):
+        scan_doc = self.current_doc
+        return [scan_doc.ChannelName(i) for i in range(self.doc_n_channels)]
 
     @property
     def n_channels(self):
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
-        return scan_doc.GetDimensionChannels()
+        return self.current_settings.NumberOfChannels()
+
+    @property
+    def doc_n_channels(self):
+        return self.doc_settings.NumberOfChannels()
+
+    @property
+    def n_tracks(self):
+        return self.current_settings.GetActiveTrackCount()
+
+    @property
+    def doc_n_tracks(self):
+        return self.doc_settings.GetActiveTrackCount()
+
+    @property
+    def current_settings(self):
+        return self.vba.Lsm5.DsRecording()
+
+    @property
+    def doc_settings(self):
+        return self.current_doc.Recording()
+
+    @staticmethod
+    def get_active_channels(settings, n_tracks):
+        track_i = 0
+        track_n = 0
+        channels = OrderedDict()
+        while track_n < n_tracks:
+            track = settings.TrackObjectByMultiplexOrder(track_i)[0]
+            if track.Acquire:
+                for channel_n in range(2):
+                    channel = track.DetectionChannelObjectByIndex(channel_n)[0]
+                    if channel.Acquire:
+                        channel_name = channel.Name
+                        if n_tracks > 1:
+                            channel_name += f'-T{track_i + 1}'
+                        channels[2 * track_i + channel_n] = channel_name
+                track_n += 1
+            track_i += 1
+        return channels
+
+    @property
+    def active_channels(self):
+        return self.get_active_channels(self.current_settings, self.n_tracks)
+
+    @property
+    def doc_active_channels(self):
+        return self.get_active_channels(self.doc_settings, self.doc_n_tracks)
 
     @property
     def time(self):
@@ -276,17 +322,17 @@ class Microscope(MicroscopeClass):
 
     @property
     def is_experiment_running(self):
-        scan_doc = self.vba.Lsm5.DsRecordingActiveDocObject
+        scan_doc = self.current_doc
         return self.zen.GUI.Acquisition.IsExperimentRunning.value \
                and scan_doc.GetDimensionTime() > 1 >= scan_doc.GetDimensionZ()
 
     @property
     def is_z_stack(self):
-        return self.vba.Lsm5.DsRecordingActiveDocObject.GetDimensionZ() > 1
+        return self.current_doc.GetDimensionZ() > 1
 
     @property
     def is_time_series(self):
-        return self.vba.Lsm5.DsRecordingActiveDocObject.GetDimensionTime() > 1
+        return self.current_doc.GetDimensionTime() > 1
 
     @property
     def time_interval(self):
@@ -309,7 +355,7 @@ class Microscope(MicroscopeClass):
             # x, y, radius in pixels, theta in rad
             if ellipticity <= 0:
                 ellipticity = 1
-            overlay = self.vba.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+            overlay = self.current_doc.VectorOverlay()
             index = self.manipulate_drawing_list(overlay, index)
             overlay.LineWidth = LineWidth
             overlay.Color = color  # Green
@@ -324,7 +370,7 @@ class Microscope(MicroscopeClass):
 
     def draw_rectangle(self, x, y, width, height, color=16777215, LineWidth=2, index=None):
         if self.ready and np.all(np.isfinite((x, y, width, height))):
-            overlay = self.vba.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+            overlay = self.current_doc.VectorOverlay()
             index = self.manipulate_drawing_list(overlay, index)
             overlay.LineWidth = LineWidth
             overlay.Color = color  # Green
@@ -337,12 +383,12 @@ class Microscope(MicroscopeClass):
 
     def remove_drawings(self):
         if self.ready:
-            self.vba.Lsm5.DsRecordingActiveDocObject.VectorOverlay().RemoveAllDrawingElements()
+            self.current_doc.VectorOverlay().RemoveAllDrawingElements()
         self.drawing_list = []
 
     def remove_drawing(self, index):
         if self.ready:
-            overlay = self.vba.Lsm5.DsRecordingActiveDocObject.VectorOverlay()
+            overlay = self.current_doc.VectorOverlay()
             lst = self.drawing_list
             if overlay.GetNumberDrawingElements() != len(lst):
                 lst = list(range(overlay.GetNumberDrawingElements()))
@@ -426,6 +472,10 @@ class Microscope(MicroscopeClass):
         filter_set.Select('2C_FilterSlider')
         filter_set.FilterSetPosition = position + 1
 
+    @staticmethod
+    def events(app):
+        return Events(app)
+
 
 class EventHandlerMetaClass(type):
     """
@@ -437,7 +487,6 @@ class EventHandlerMetaClass(type):
     @staticmethod
     def null_event_handler(event, *args, **kwargs):
         print(('Unhandled event {}'.format(event), args, kwargs))
-        return None
 
     def __new__(mcs, name, bases, dictionary):
         # Construct the new class.
@@ -452,48 +501,82 @@ class EventHandlerMetaClass(type):
         return cls
 
 
-def event_handler_factory(zen, app):
-    class EventHandlerCls(metaclass=EventHandlerMetaClass):
-        def __init__(self):
-            self.app = app
-            self.zen = zen
-            self.unique_events = set()
+class Events(QtCore.QThread):
+    done = QtCore.pyqtSignal(object)
+    signal = QtCore.pyqtSignal(object)
 
-        @error_wrap
-        def OnThrowEvent(self, *args):
-            if args[0] == Cst.Text.value:
-                return
-            # print(('OnThrowEvent:', args))
-            if args[0] == Cst.LeftButtonDown.value and self.app.center_on_click_box.isChecked():
-                mouse_pos = self.zen.mouse_pos
-                frame_size = self.zen.frame_size
-                pxsize = self.zen.pxsize
-                d = [(frame_size[i] / 2 - mouse_pos[i] + self.app.NS.roi_pos[i]) * pxsize / 1000 for i in range(2)]
-                d[1] *= -1
-                self.zen.move_stage_relative(*d)
+    def __init__(self, app, *args, **kwargs):
+        super().__init__()
+        self.is_alive = True
+        self.app = app
+        self.zen = self.app.microscope
+        self.args = args
+        self.kwargs = kwargs
+        self.signal.connect(self.callback)
+        self.done.connect(self.join)
+        self.start()
 
-        @error_wrap
-        def OnThrowPropertyEvent(self, *args):
-            # if args not in self.unique_events:
-            #     self.unique_events.add(args)
-            #     print(('OnThrowPropertyEvent:', args))
-            if args[1] == '2C_FilterSlider' and self.app.duolink_filter != self.zen.duolink_filter:
-                self.app.duolink_filter = self.zen.duolink_filter
-                self.app.duolink_filter_lbl.setText(
-                    self.app.duolink_block_drp.currentText().split(' & ')[self.zen.duolink_filter])
-                self.app.duolink_filter_rdb.changeState(self.zen.duolink_filter)
-            elif args[1] == 'Stage':
-                last_pos = self.zen.stage_pos
-                frame_size = self.zen.frame_size
-                pxsize = self.zen.pxsize
-                self.app.map.numel_data(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
-                                        frame_size[1] * pxsize / 1e6)
-                self.app.map.draw()
-            elif args[1] in ('DataColorPalette', 'FramesPerStack'):
-                self.app.change_color()
-            elif args[1] == 'TransmissionSpot':
-                self.app.change_wavelengths()
-    return EventHandlerCls
+    def event_handler(self):
+        class EventHandlerCls(metaclass=EventHandlerMetaClass):
+            @staticmethod
+            def OnThrowEvent(*args):
+                self.signal.emit(('OnThrowEvent', args))
+
+            @staticmethod
+            def OnThrowPropertyEvent(*args):
+                self.signal.emit(('OnThrowPropertyEvent', args))
+        return EventHandlerCls
+
+    def run(self):
+        with Microscope(self.app.microscope_class, event_handler=self.event_handler()) as zen:
+            mem = Mem(zen, self.app, [None, False], [None, False], False)
+            zen.enable_event('LeftButtonDown')
+            while not self.app.quit:
+                sleep(.01)
+                pythoncom.PumpWaitingMessages()
+                mem.checks()
+        self.done.emit(None)
+
+    def callback(self, args):
+        getattr(self, args[0])(*args[1])
+
+    def join(self, *args, **kwargs):
+        self.quit()
+        self.wait()
+        self.is_alive = False
+
+    @error_wrap
+    def OnThrowEvent(self, *args):
+        # if args[0] == Cst.Text.value:
+        #     return
+        # print(('OnThrowEvent:', args))
+        if args[0] == Cst.LeftButtonDown.value and self.app.center_on_click_box.isChecked():
+            mouse_pos = self.zen.mouse_pos
+            frame_size = self.zen.frame_size
+            pxsize = self.zen.pxsize
+            d = [(frame_size[i] / 2 - mouse_pos[i] + self.app.NS.roi_pos[i]) * pxsize / 1000 for i in range(2)]
+            d[1] *= -1
+            self.zen.move_stage_relative(*d)
+
+    @error_wrap
+    def OnThrowPropertyEvent(self, *args):
+        # if args[1] not in ('HBO', 'TirfAngle', 'TransmissionSpot', 'Focus'):
+        #     print(('OnThrowPropertyEvent:', args))
+        if args[1] == '2C_FilterSlider':
+            self.app.duolink_filter_lbl.setText(
+                self.app.duolink_block_drp.currentText().split(' & ')[self.zen.duolink_filter])
+            self.app.duolink_filter_rdb.changeState(self.zen.duolink_filter)
+        elif args[1] == 'Stage':
+            last_pos = self.zen.stage_pos
+            frame_size = self.zen.frame_size
+            pxsize = self.zen.pxsize
+            self.app.map.numel_data(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
+                                    frame_size[1] * pxsize / 1e6)
+            self.app.map.draw()
+        elif args[1] in ('DataColorPalette', 'FramesPerStack', 'DataAcquire', 'TrackAcquire'):
+            self.app.change_color()
+        elif args[1] == 'OBJREV':
+            self.app.change_wavelengths()
 
 
 @dataclass
@@ -504,8 +587,9 @@ class Mem:
     current_zen: list
     experiment_running: bool
 
+    @property
     def title(self):
-        return '' if self.current_zen[0] is None else self.current_zen[0].title()
+        return '' if not self.current_zen or not self.current_zen[0] else self.current_zen[0].Title()
 
     def checks(self):  # events that don't throw an event
         if self.title != self.zen.title:  # current document changed
@@ -523,10 +607,10 @@ class Mem:
             self.app.map.draw()
 
         # the LMB event is not enabled on the current doc
-        if not self.current_zen[1] and self.app.centerbox.isChecked():
-            if not self.previous_zen[0] is None:
+        if not self.current_zen[1] and self.app.center_on_click_box.isChecked():
+            if self.previous_zen and self.previous_zen[0]:
                 self.zen.disable_event('LeftButtonDown', self.previous_zen[0])
-            if not self.current_zen[0] is None:
+            if self.current_zen and self.current_zen[0]:
                 self.zen.enable_event('LeftButtonDown', self.current_zen[0])
                 self.current_zen[1] = True
 

@@ -18,6 +18,7 @@ from focusfeedbackgui.utilities import QThread, yaml_load, warp
 from focusfeedbackgui.pid import Pid
 from focusfeedbackgui.microscopes import MicroscopeClass
 
+
 np.seterr(all='ignore')
 
 
@@ -39,6 +40,7 @@ def feedbackloop(queue, ns, microscope):
             piezo_time = .5  # time piezo needs to settle in s
             detected = deque((True,) * 5, 5)
             zmem = {}
+            roi_pos = np.array(ns.roi_pos).astype(float)
 
             pid = Pid(0, piezo_pos, ns.max_step, time_interval, ns.gain)
 
@@ -110,11 +112,12 @@ def feedbackloop(queue, ns, microscope):
                             if ns.channels[next_channel_idx] in zmem:
                                 microscope.piezo_pos = zmem[ns.channels[next_channel_idx]]
 
-                if xy_pos:  # Maybe move stage or ROI
+                if xy_pos:  # Maybe move stage or ROI  # TODO: report pos wrt to frame in stead of roi which can move
                     xy = np.mean(list(xy_pos.values()), 0)
                     if ns.feedback_mode_xy == 1:
-                        ns.roi_pos = (ns.roi_pos + np.clip(xy - ns.roi_size / 2, -ns.max_step_xy, ns.max_step_xy)
-                                      + 1 / 2).astype(int).tolist()
+                        roi_pos += np.clip(xy - ns.roi_size / 2, -ns.max_step_xy, ns.max_step_xy)
+                        ns.roi_pos = np.round(roi_pos).astype(int).tolist()
+
                     if ns.feedback_mode_xy == 2:
                         microscope.move_stage_relative(*np.clip(xy - ns.roi_size / 2, -ns.max_step_xy, ns.max_step_xy)
                                                        * microscope.pxsize / 1e3)
@@ -241,10 +244,10 @@ class UiMainWindow(QMainWindow):
 
         r = 0
         conf_grid.addWidget(QLabel('Feedback channel:'), r, 0)
-        self.channels_rdb = QGui.CheckBoxes(['{}'.format(i) for i in range(10)])
+        self.channels_box = QGui.CheckBoxes(['{}'.format(i) for i in range(10)])
         for i, e in enumerate((664, 510, 583, 427)):
-            self.channels_rdb.setTextBoxValue(i, e)
-        conf_grid.addWidget(self.channels_rdb, r, 1)
+            self.channels_box.setTextBoxValue(i, e)
+        conf_grid.addWidget(self.channels_box, r, 1)
 
         r += 1
         conf_grid.addWidget(QLabel('Feedback mode:'), r, 0)
@@ -434,7 +437,7 @@ class App(UiMainWindow):
         self.calibrate_action.triggered.connect(self.calibrate)
         self.warp_btn.clicked.connect(self.warp)
         self.reset_map_btn.clicked.connect(self.reset_map)
-        self.channels_rdb.connect(self.change_channel, self.change_wavelength)
+        self.channels_box.connect(self.change_channel, self.change_wavelength)
         self.feedback_mode_rdb.connect(self.change_feedback_mode)
         self.xy_feedback_mode_rdb.connect(self.change_xy_feedback_mode)
         self.duolink_filter_rdb.connect(self.change_duolink_filter)
@@ -463,10 +466,10 @@ class App(UiMainWindow):
         if len(self.NS.channels):
             self.stay_primed_box.setEnabled(True)
             self.prime_btn.setEnabled(True)
-        self.events = MicroscopeClass.events(self)
+        self.events = self.microscope.events(self)
 
     def change_wavelengths(self):
-        for channel, value in enumerate(self.channels_rdb.textBoxValues):
+        for channel, value in enumerate(self.channels_box.textBoxValues):
             self.change_wavelength(channel, value)
 
     def change_roi_size(self, val):
@@ -488,19 +491,19 @@ class App(UiMainWindow):
             pass
 
     def change_color(self):
-        for channel in self.NS.channels:
-            color = self.microscope.channel_colors_rgb[channel]
-            for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot,
-                         self.yzplot):
-                if channel in plot:
-                    plot.plt[channel].set_color(color)
-            for tb in ('top', 'bottom'):
-                cn = '{}{}'.format(tb, channel)
-                if cn in self.splot:
-                    self.splot.plt[cn].set_color(color)
-        camera = [self.microscope.get_camera(i) for i in self.microscope.channel_names]
-        enabled = [False if self.NS.cyllens[c] == 'None' else True for c in camera]
-        self.channels_rdb.changeOptions(self.microscope.channel_names, self.microscope.channel_colors_hex, enabled)
+        for channel, color in enumerate(self.microscope.channel_colors_rgb):
+            if channel in self.NS.channels:
+                for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot, self.xyplot, self.xzplot,
+                             self.yzplot):
+                    if channel in plot:
+                        plot.plt[channel].set_color(color)
+                for tb in ('top', 'bottom'):
+                    cn = '{}{}'.format(tb, channel)
+                    if cn in self.splot:
+                        self.splot.plt[cn].set_color(color)
+        camera = {name: self.microscope.get_camera(name) for name in self.microscope.channel_names}
+        enabled = [False if self.NS.cyllens[c] == 'None' else True for c in camera.values()]
+        self.channels_box.changeOptions(camera.keys(), self.microscope.channel_colors_hex, enabled)
 
     def change_wavelength(self, channel, val):
         try:
@@ -529,7 +532,7 @@ class App(UiMainWindow):
             if file:
 
                 self.calibz_thread = QThread(cyl.calibrate_z, self.calibrate_done, file,
-                                             self.channels_rdb.textBoxValues, self.NS.channels[0], self.NS.cyllens,
+                                             self.channels_box.textBoxValues, self.NS.channels[0], self.NS.cyllens,
                                              self.calibrate_progress)
                 self.calibrate_progress(0)
             else:
@@ -573,7 +576,7 @@ class App(UiMainWindow):
                 if os.path.isfile(file):
                     warp(file, transform_files=transform_files)
 
-        self.warpthread = QThread(warp_files, self.warp_done, files)
+        self.warp_thread = QThread(warp_files, self.warp_done, files)
 
     def warp_progress(self, progress):
         self.warp_btn.setText(f'Warping: {progress:.0f}%')

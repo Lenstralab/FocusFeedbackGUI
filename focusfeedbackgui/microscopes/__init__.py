@@ -6,32 +6,35 @@ from traceback import format_exc
 
 
 class MicroscopeClass(metaclass=ABCMeta):
-    def __new__(cls, microscope, *args, **kwargs):
-        from focusfeedbackgui.microscopes.demo import Microscope
-        try:
-            if microscope.lower() == 'zen_black':
-                from focusfeedbackgui.microscopes.zen_black import Microscope
-        except ImportError:
-            warn(f'Importing {microscope} failed, importing demo instead.\n{format_exc()}')
-        return super().__new__(Microscope)
+    # default values which should be overloaded
+    ready = True
+    frame_size = 256, 256
+    objective_magnification = 100
+    optovar_magnification = 1.6
+    objective_na = 1.57
+    pxsize = 97.07
+    time_interval = 1
+    filename = ''
+    channel_colors_int = 255, 65280
+    channel_names = 'TV1', 'TV2'
+    piezo_pos = 0
+    focus_pos = 0
+    stage_pos = 0, 0
+    duolink_filter = 1
+    time = 0
+    is_experiment_running = False
 
-    def __init__(self, *args, **kwargs):
-        self.ready = True
-        self.frame_size = 256, 256
-        self.objective_magnification = 100
-        self.optovar_magnification = 1.6
-        self.objective_na = 1.57
-        self.pxsize = 97.07
-        self.time_interval = 1
-        self.filename = ''
-        self.channel_colors_int = 255, 65280
-        self.channel_names = 'TV1', 'TV2'
-        self.piezo_pos = 0
-        self.focus_pos = 0
-        self.stage_pos = 0, 0
-        self.duolink_filter = 1
-        self.time = 0
-        self.is_experiment_running = False
+    def __new__(cls, microscope, *args, **kwargs):
+        if isinstance(microscope, type) and issubclass(microscope, MicroscopeClass):
+            Microscope = microscope
+        else:
+            from focusfeedbackgui.microscopes.demo import Microscope
+            try:
+                if microscope.lower() == 'zen_black':
+                    from focusfeedbackgui.microscopes.zen_black import Microscope
+            except ImportError:
+                warn(f'Importing {microscope} failed, importing demo instead.\n{format_exc()}')
+        return super().__new__(Microscope)
 
     def __enter__(self):
         return self
@@ -47,7 +50,7 @@ class MicroscopeClass(metaclass=ABCMeta):
         callback(0)
 
     @staticmethod
-    def events(*args, **kwargs):
+    def events(app):
         pass
 
     @staticmethod
@@ -56,11 +59,11 @@ class MicroscopeClass(metaclass=ABCMeta):
 
     @property
     def channel_colors_hex(self):
-        color = []
+        colors = []
         for cci in self.channel_colors_int:
             h = np.base_repr(cci, 16, 6)[-6:]
-            color.append('#' + h[4:] + h[2:4] + h[:2])
-        return color
+            colors.append('#' + h[4:] + h[2:4] + h[:2])
+        return colors
 
     @property
     def channel_colors_rgb(self):
