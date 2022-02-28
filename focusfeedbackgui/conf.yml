@@ -1,14 +1,17 @@
-microscope: zen_black
-maxStep: 0.1 #um
-maxStepxy: 1 #px
-ROISize: 48 #px
-ROIPos: [0, 0] #px from center
-dataDir: 'd:\data' #where to find the czi to attach the pzl to
-tmpPzlFile: 'd:\tmp\tmp.pzl'
-fastMode: False #fast fitting
-gain: 5e-3 #gain for PID mode
-cyllenses: 100x, 63x
+microscope: zen_black  # choose any from the microscopes folder
+maxStep: 0.1  # maximum step that the piezo can take in um
+maxStepxy: 1  # maximum step that the stage or ROI can take in pixels
+ROISize: 48  # ROI size in pixels
+ROIPos: [0, 0]  # Position of the ROI wrt. the center in pixels
+dataDir: 'd:\data'  # where to find the czi file to attach the pzl file to
+tmpPzlFile: 'd:\tmp\tmp.pzl'  # location for temporary storage of the pzl file
+fastMode: False  # if True: only fit using moment analysis for faster results; False: use proper fitting for better results
+gain: 5e-3  # gain for PID mode
+cyllenses: 100x, 63x  # names of available cylinder lenses
 
+# for each cylinderlens x objective magnification x optovar here is a calibration
+# q: calibrated Zhuang parameters
+# theta: angle of psf wrt axes of the image (this depends on the proper rotation of the cylinder lens)
 100x100x10: # LJ1558RM, 300 mm
   q: [1.11350728, -0.11643823,  0.15658226,  1.26478436,  0.48382135,  0.41210216,  3.73683468, 21.41761362,  0.97043002]
   theta: -0.03

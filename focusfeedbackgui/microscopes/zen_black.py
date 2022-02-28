@@ -5,12 +5,10 @@ from re import search
 from time import sleep
 from threading import get_ident
 from functools import partial
-from dataclasses import dataclass
 from enum import Enum
 from collections import OrderedDict
 from PyQt5 import QtCore
 from focusfeedbackgui.utilities import QThread, error_wrap
-from focusfeedbackgui.__main__ import App
 from focusfeedbackgui.microscopes import MicroscopeClass
 
 
@@ -95,7 +93,6 @@ class Microscope(MicroscopeClass):
                     vba = win32com.client.Dispatch('Lsm5Vba.Application')
                 else:
                     vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler)
-                    # vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler(self))
                 self._id[thread_id] = (pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, zen),
                                        pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, vba))
             self._zen_vba[thread_id] = (zen, vba)
@@ -324,7 +321,7 @@ class Microscope(MicroscopeClass):
     def is_experiment_running(self):
         scan_doc = self.current_doc
         return self.zen.GUI.Acquisition.IsExperimentRunning.value \
-               and scan_doc.GetDimensionTime() > 1 >= scan_doc.GetDimensionZ()
+            and scan_doc.GetDimensionTime() > 1 >= scan_doc.GetDimensionZ()
 
     @property
     def is_z_stack(self):
@@ -503,16 +500,19 @@ class EventHandlerMetaClass(type):
 
 class Events(QtCore.QThread):
     done = QtCore.pyqtSignal(object)
-    signal = QtCore.pyqtSignal(object)
+    event = QtCore.pyqtSignal(object)
 
     def __init__(self, app, *args, **kwargs):
         super().__init__()
         self.is_alive = True
         self.app = app
         self.zen = self.app.microscope
+        self.previous_zen = [None, False]
+        self.current_zen = [self.zen.current_doc, True]
+        self.zen.enable_event('LeftButtonDown', self.current_zen[0])
         self.args = args
         self.kwargs = kwargs
-        self.signal.connect(self.callback)
+        self.event.connect(self.callback)
         self.done.connect(self.join)
         self.start()
 
@@ -520,21 +520,18 @@ class Events(QtCore.QThread):
         class EventHandlerCls(metaclass=EventHandlerMetaClass):
             @staticmethod
             def OnThrowEvent(*args):
-                self.signal.emit(('OnThrowEvent', args))
+                self.event.emit(('OnThrowEvent', args))
 
             @staticmethod
             def OnThrowPropertyEvent(*args):
-                self.signal.emit(('OnThrowPropertyEvent', args))
+                self.event.emit(('OnThrowPropertyEvent', args))
         return EventHandlerCls
 
     def run(self):
-        with Microscope(self.app.microscope_class, event_handler=self.event_handler()) as zen:
-            mem = Mem(zen, self.app, [None, False], [None, False], False)
-            zen.enable_event('LeftButtonDown')
+        with Microscope(self.app.microscope_class, event_handler=self.event_handler()):
             while not self.app.quit:
                 sleep(.01)
                 pythoncom.PumpWaitingMessages()
-                mem.checks()
         self.done.emit(None)
 
     def callback(self, args):
@@ -544,6 +541,10 @@ class Events(QtCore.QThread):
         self.quit()
         self.wait()
         self.is_alive = False
+
+    @property
+    def title(self):
+        return '' if not self.current_zen or not self.current_zen[0] else self.current_zen[0].Title()
 
     @error_wrap
     def OnThrowEvent(self, *args):
@@ -561,7 +562,7 @@ class Events(QtCore.QThread):
     @error_wrap
     def OnThrowPropertyEvent(self, *args):
         # if args[1] not in ('HBO', 'TirfAngle', 'TransmissionSpot', 'Focus'):
-        #     print(('OnThrowPropertyEvent:', args))
+        #     print(f'{time.strftime("%H:%M:%S", time.localtime())} OnThrowPropertyEvent: {args}')
         if args[1] == '2C_FilterSlider':
             self.app.duolink_filter_lbl.setText(
                 self.app.duolink_block_drp.currentText().split(' & ')[self.zen.duolink_filter])
@@ -577,43 +578,23 @@ class Events(QtCore.QThread):
             self.app.change_color()
         elif args[1] == 'OBJREV':
             self.app.change_wavelengths()
+        elif args[1] == 'HR_MainShutter1':
+            if self.title != self.zen.title:  # current document changed
+                self.previous_zen = self.current_zen
+                self.current_zen = [self.zen.current_doc, False]  # ActiveDocObject, LMB enabled
+            elif self.zen.is_experiment_running:
+                last_pos = self.zen.stage_pos
+                frame_size = self.zen.frame_size
+                pxsize = self.zen.pxsize
+                self.app.map.append_data_docs(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
+                                              frame_size[1] * pxsize / 1e6)
+                self.app.map.draw()
 
-
-@dataclass
-class Mem:
-    zen: Microscope
-    app: App
-    previous_zen: list
-    current_zen: list
-    experiment_running: bool
-
-    @property
-    def title(self):
-        return '' if not self.current_zen or not self.current_zen[0] else self.current_zen[0].Title()
-
-    def checks(self):  # events that don't throw an event
-        if self.title != self.zen.title:  # current document changed
-            self.current_zen = [self.zen.current_doc, False]  # ActiveDocObject, LMB enabled
-            self.zen.enable_event('LeftButtonDown')
-
-        # draw a black rectangle in the map after an experiment started
-        experiment_running, self.experiment_running = self.experiment_running, self.zen.is_experiment_running
-        if not experiment_running and self.experiment_running:
-            last_pos = self.zen.stage_pos
-            frame_size = self.zen.frame_size
-            pxsize = self.zen.pxsize
-            self.app.map.append_data_docs(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
-                                          frame_size[1] * pxsize / 1e6)
-            self.app.map.draw()
-
-        # the LMB event is not enabled on the current doc
-        if not self.current_zen[1] and self.app.center_on_click_box.isChecked():
-            if self.previous_zen and self.previous_zen[0]:
-                self.zen.disable_event('LeftButtonDown', self.previous_zen[0])
-            if self.current_zen and self.current_zen[0]:
-                self.zen.enable_event('LeftButtonDown', self.current_zen[0])
-                self.current_zen[1] = True
-
-        if self.app.magnification_str != self.zen.magnification_str:  # Some things in the optical path have changed
-            self.app.magnification_str = self.zen.magnification_str
-            self.app.confload()
+            # the LMB event is not enabled on the current doc
+            if not self.current_zen[1] and self.app.center_on_click_box.isChecked():
+                if self.previous_zen and self.previous_zen[0]:
+                    self.zen.disable_event('LeftButtonDown', self.previous_zen[0])
+                if self.current_zen and self.current_zen[0]:
+                    sleep(1)  # TODO: We don't know when ZEN is ready for this, so we just wait a bit
+                    self.zen.enable_event('LeftButtonDown', self.current_zen[0])
+                    self.current_zen[1] = True

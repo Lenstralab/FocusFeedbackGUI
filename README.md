@@ -98,20 +98,5 @@ extension. This file contains metadata about the experiment and the parameters f
 - p: The parameters fit during the tracking, see 'Columns' for what is written in each column.
 
 ## Configuration
-The file 'conf.yml' contains configuration and calibration for the GUI.
-- maxStep: maximum distance the GUI can move the focus each frame.
-- ROISize: size of the square within which the GUI looks for a particle to track
-- ROIPos: position of the square relative to the center of the image
-- dataDir: directory where the GUI will look for the saved image file to attach the pzl file to after an experiment.
-- tmpPzlFile: temporary path for a temporary pzl file
-- fastMode: True: only use an initial guess on the particle parameters for fitting, False: also do a proper fit to get a
-better estimate of the particle fit parameters
-- gain: Gain used for tracking in PID mode
-- cyllenses: names of available cylindrical lenses, it is recommended to name the lenses after the magnifications with
-which the are to be used.
-- style: Qt style for the program layout
-- AxBxC: calibration data. A: cyllindrical lens, B: objective magnification, C: 10x optovar magnification (10, 12, 16).
-The values below can be obtained by doing a calibration using the 'Calibrate with beads' button on the 'Configuration'
-tab. 
-  - q: Zhuang mode parameters
-  - theta: angle of cylindrical lens (and particle).
+The file 'conf.yml' contains configuration and calibration for the GUI. See the configuration file for more details.
+Some of the values can be changed by the gui and then saved by using the File>Save (As) menu.
