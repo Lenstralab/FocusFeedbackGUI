@@ -75,8 +75,6 @@ def feedbackloop(queue, ns, microscope):
                         fitted = False
                         detected.append(False)
                     queue.put((channel, time_n, fitted, a[:8], piezo_pos, focus_pos, time_s_now))
-                else:
-                    time_n, time_n_now = 0, 0
 
                 time_s_now = time()
                 piezo_factor = np.clip((time_s_now - time_s_prev) / piezo_time, 0.2, 1)
