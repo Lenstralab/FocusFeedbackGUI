@@ -121,12 +121,9 @@ def feedbackloop(queue, ns, microscope):
                                                        * microscope.pxsize / 1e3)
 
                 # Wait for next frame:
-                print(f'before {microscope.time - 1 = }, {time_n_now = }')
                 while microscope.time - 1 == time_n_now and microscope.is_experiment_running and not ns.stop \
                         and not ns.quit:
                     sleep(time_interval / 4)
-                    print(f'while {microscope.time - 1 = }, {time_n_now = }')
-                print(f'after {microscope.time - 1 = }, {time_n_now = }')
                 if time_n_now < time_n_prev:
                     break
 
