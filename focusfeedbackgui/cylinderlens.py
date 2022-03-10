@@ -225,15 +225,13 @@ def detect_points(im, sigma, mask=None, footprint=15):
 
 def localize(f, im, theta=None, fast_mode=False, progress=True):
     frames = f['frame'].astype('int').tolist()
-    c = ((i, im(j)) for i, j in zip(f.iterrows(), frames))
     sigma = [im.sigma[i] for i in range(int(f['C'].max()) + 1)]
 
-    @parfor(c, desc='Fitting localisations', length=len(frames), bar=progress)
-    def fun(iteration):
-        h = iteration[0][1].copy()
-        jm = iteration[1].copy()
-
-        q, dq, r_squared = fn.fitgauss(jm, theta, sigma[int(h['C'])], fast_mode, True, h[['x_ini', 'y_ini']].to_numpy())
+    @parfor(f.iterrows(), desc='Fitting localisations', length=len(frames), bar=progress)
+    def fun(row):
+        h = row[1]
+        q, dq, r_squared = fn.fitgauss(im(int(h['frame'])), theta, sigma[int(h['C'])], fast_mode, True,
+                                       h[['x_ini', 'y_ini']].to_numpy())
 
         h['y_ini'] = h['y']
         h['x_ini'] = h['x']
@@ -432,6 +430,7 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         f['dc'] = px[:, 3] - py[:, 3]
         f['ddc'] = np.sqrt(dpx[:, 3] ** 2 + dpy[:, 3] ** 2)
         dc = [i/(im.immersionN**2/1.33**2) for i in (0.1, 0.6)]
+
         f = f.query('&'.join(('0.1<sigmax<0.5', '0.1<sigmay<0.5', 'abs(Ax)<10', 'abs(Bx)<10', 'abs(Ay)<10',
                               'abs(By)<10', 'X2x<20', 'X2y<20', '{}<dc<{}'.format(*dc), 'cx<10', 'cy<10')))
 
@@ -566,7 +565,7 @@ def fit_zhuang_ell(z, e, p):
     """
     z, e = utilities.rm_nan(z, e)
     if z.size == 0:
-        return np.full((1, 9), np.nan), np.full((1, 9), np.nan), np.nan
+        return np.full(9, np.nan), np.full(9, np.nan), np.nan
 
     def g(pf):
         return np.nansum((e - zhuang_ell(z, pf)) ** 2)
