@@ -78,7 +78,7 @@ def gaussian(p, x, y):
     reimplemented for numba, small deviations from true result
         possible because of reimplementation of erf for numba
     """
-    xv, yv = meshgrid(np.arange(y) - p[0], np.arange(x) - p[1])
+    xv, yv = meshgrid(np.arange(y), np.arange(x))
     p = tuple([float(i) for i in p])
     return gaussian7grid(p, xv, yv)
 
