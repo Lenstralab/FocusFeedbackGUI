@@ -595,6 +595,7 @@ class Events(QtCore.QThread):
                 if self.previous_zen and self.previous_zen[0]:
                     self.zen.disable_event('LeftButtonDown', self.previous_zen[0])
                 if self.current_zen and self.current_zen[0]:
-                    sleep(1)  # TODO: We don't know when ZEN is ready for this, so we just wait a bit
-                    self.zen.enable_event('LeftButtonDown', self.current_zen[0])
+                    for i in range(10):
+                        sleep(1)  # TODO: We don't know when ZEN is ready for this, so we just wait a bit
+                        self.zen.enable_event('LeftButtonDown', self.current_zen[0])
                     self.current_zen[1] = True
