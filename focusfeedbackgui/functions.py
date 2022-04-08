@@ -8,7 +8,10 @@ from time import time
 from glob import glob
 
 
-@jit(nopython=True, nogil=True)
+np.seterr(invalid='ignore')
+
+
+@jit(nopython=True, nogil=True, fastmath=True)
 def meshgrid(x, y):
     s = (len(y), len(x))
     xv = np.zeros(s)
@@ -20,7 +23,7 @@ def meshgrid(x, y):
     return xv, yv
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, fastmath=True)
 def erf(x):
     # save the sign of x
     sign = 1 if x >= 0 else -1
@@ -36,11 +39,11 @@ def erf(x):
 
     # A&S formula 7.1.26
     t = 1.0 / (1.0 + p * x)
-    y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * np.exp(-x * x)
+    y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * np.exp(-x * x)
     return sign * y  # erf(-x) = -erf(x)
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, fastmath=True)
 def erf2(x):
     s = x.shape
     y = np.zeros(s)
@@ -50,7 +53,7 @@ def erf2(x):
     return y
 
 
-@jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True, fastmath=True)
 def gaussian7grid(p, xv, yv):
     """ p: [x, y, fwhm, area, offset, ellipticity, angle towards x-axis]
         xv, yv = meshgrid(np.arange(Y),np.arange(X))
@@ -112,11 +115,6 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         S = np.shape(jm)
         xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
     else:  # Full fitting
-        if (p[2] > 8) | (p[3] < 0.1):
-            if err:
-                return np.full(7, np.nan), np.full(7, np.nan), np.nan
-            else:
-                return np.full(7, np.nan), np.nan
         p[0:2] += cr[:, 0]
         s = 2 * np.ceil(p[2])
         cs = np.round(((p[0] - s, p[0] + s + 1), (p[1] - s, p[1] + s + 1))).astype('int')

@@ -543,6 +543,8 @@ class App(UiMainWindow):
 
     def calibrate_done(self, channel, magnification_str, theta, q):
         try:
+            if not self.get_cyllens(channel) + magnification_str in self.conf:
+                self.conf[self.get_cyllens(channel) + magnification_str] = {}
             self.conf[self.get_cyllens(channel) + magnification_str]['theta'] = float(theta)
             self.conf[self.get_cyllens(channel) + magnification_str]['q'] = q.tolist()
             self.NS.theta[self.get_cm_str(channel)] = float(theta)

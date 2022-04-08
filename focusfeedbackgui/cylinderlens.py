@@ -98,7 +98,7 @@ def find_zhuang_range(q):
     rts = np.roots(q)
     rts = rts[np.isreal(rts)]
     
-    return np.real(np.array((np.max(rts[rts < 0]), np.min(rts[rts > 0]))))
+    return np.real(np.array((np.max(rts[rts < 0], initial=-10), np.min(rts[rts > 0], initial=10))))
 
 
 def zhuang_fun(z, p):
@@ -275,19 +275,23 @@ def group(it, n):
         yield it[n*i:n*i+n]
 
 
-def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progress=None):
+def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None, elim=None, r2lim=None):
+    if elim is None:
+        elim = 0.4, 2.5
+    if r2lim is None:
+        r2lim = 0.6, 0.75
     with imread(file) as im, PdfPages(os.path.splitext(file)[0] + '_Cyllens_calib.pdf') as pdf:
         if em_lambda is not None:
             if np.isscalar(em_lambda):
                 em_lambda = [em_lambda] * im.shape[2]
             im.sigma = [i / 2 / im.NA / im.pxsize / 1000 for i in em_lambda]
-        if master_channel is not None:
-            im.masterch = master_channel
+        if channel is None:
+            channel = channel
         if cyllens is not None:
             im.cyllens = cyllens
-        print(f'Using channel {im.masterch}, sigma: {im.sigma[im.masterch]}')
+        print(f'Using channel {channel}, sigma: {im.sigma[channel]}')
 
-        a = detect_points(im.max(im.masterch), im.sigma[im.masterch])
+        a = detect_points(im.max(channel), im.sigma[channel])
 
         a['particle'] = range(len(a))
 
@@ -295,13 +299,12 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         gs = GridSpec(3, 5, figure=fig)
 
         fig.add_subplot(gs[:2, :5])
-        plt.imshow(im.max(im.masterch))
+        plt.imshow(im.max(channel))
         plt.plot(a['x'], a['y'], 'or', markerfacecolor='none')
         for i in a.index:
             plt.text(a.loc[i, 'x'], a.loc[i, 'y'], a.loc[i, 'particle'], color='w')
 
         d = pandas.DataFrame()
-        C = im.masterch
 
         zmax = np.round(15 / im.deltaz).astype('int')
         zmax = min(zmax, im.shape[3])
@@ -309,11 +312,11 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         for T in range(im.shape[4]):
             for Z in range(zmax):
                 b = a.copy()
-                b['C'] = C
+                b['C'] = channel
                 b['Z'] = Z
                 b['T'] = T
                 b['z_um'] = Z * im.deltaz
-                b['frame'] = im.czt2n(C, Z, T)
+                b['frame'] = im.czt2n(channel, Z, T)
                 d = pandas.concat((d, b))
         d = d.reset_index(drop=True)
         if callable(progress):
@@ -344,7 +347,8 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         n_columns = 3
         n_rows = 5
 
-        a0 = a.query('R2>0.6 & 0.1<s_um<0.6 & 2/3<e<3/2 & dx_um<0.05 & dy_um<0.05 & de<0.2 & ds_um<0.2').copy()
+        a0 = a.query(f'R2>{r2lim[0]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.05 & dy_um<0.05 & de<0.2'
+                     ' & ds_um<0.2').copy()
 
         pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for _ in range(16))
 
@@ -397,7 +401,8 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         py = np.array(py)
         dpy = np.array(dpy)
 
-        g = a.query('R2>0.9 & 0.15<s_um<0.6 & 2/3<e<3/2 & dx_um<0.05 & dy_um<0.05 & de<0.2 & ds_um<0.2').copy()
+        g = a.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.05 & dy_um<0.05 & de<0.2'
+                    ' & ds_um<0.2').copy()
         x = [g.query('particle=={}'.format(i))['x'].mean() for i in pr]
         y = [g.query('particle=={}'.format(i))['y'].mean() for i in pr]
 
@@ -429,10 +434,10 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         f['ddy'] = dpy[:, 4]
         f['dc'] = px[:, 3] - py[:, 3]
         f['ddc'] = np.sqrt(dpx[:, 3] ** 2 + dpy[:, 3] ** 2)
-        dc = [i/(im.immersionN**2/1.33**2) for i in (0.1, 0.6)]
+        dc = [i/(im.immersionN**2/1.33**2) for i in (0.1, 1.5)]
 
-        f = f.query('&'.join(('0.1<sigmax<0.5', '0.1<sigmay<0.5', 'abs(Ax)<10', 'abs(Bx)<10', 'abs(Ay)<10',
-                              'abs(By)<10', 'X2x<20', 'X2y<20', '{}<dc<{}'.format(*dc), 'cx<10', 'cy<10')))
+        f = f.query('0.1<sigmax<0.5 & 0.1<sigmay<0.5 & abs(Ax)<10 & abs(Bx)<10 & abs(Ay)<10 & abs(By)<10 & X2x<20'
+                    f' & X2y<20 & {dc[0]}<abs(dc)<{dc[1]} & cx<10 & cy<10')
 
         Zx = np.array(())
         Zy = np.array(())
@@ -501,8 +506,8 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         q = np.hstack((np.sqrt(qx[0] / qy[0]), (qx[3] + qy[3]) / 2, (qx[3] - qy[3]) / 2,
                        qx[1], qx[2], qx[4], qy[1], qy[2], qy[4]))
         rl, = plt.plot(Z, zhuang_ell(Z, q), 'r-')
-        E[E > 1.5] = np.nan
-        E[E < 0.6] = np.nan
+        E[E > elim[1]] = np.nan
+        E[E < elim[0]] = np.nan
         Ze[Ze < -1] = np.nan
         Ze[Ze > 1] = np.nan
         E[utilities.outliers(E, False)] = np.nan
@@ -512,7 +517,7 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         plt.ylabel('ellipticity (um)')
         plt.legend((rl, gl), ('sx/sy', 'fit'))
         # plt.xlim(-1,1)
-        plt.ylim(0.5, 1.5)
+        plt.ylim(elim[0]/1.1, elim[1]*1.1)
 
         txt = f'θ = {theta} ± {dtheta}\ne0: {q[0]} ± {dq[0]}\nz0: {q[1]} ± {dq[1]}\nc : {q[2]} ± {dq[2]}\n'\
               f'Ax: {q[3]} ± {dq[3]}\nBx: {q[4]} ± {dq[4]}\ndx: {q[5]} ± {dq[5]}\nAy: {q[6]} ± {dq[6]}\n'\
@@ -530,7 +535,7 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         else:
             m = ''
 
-        s = '{}{}{:.0f}:'.format(im.cyllens[C], m, im.optovar[0] * 10)
+        s = '{}{}{:.0f}:'.format(im.cyllens[channel], m, im.optovar[0] * 10)
         s += '\n  q: [{}, {}, {}, {}, {}, {}, {}, {}, {}]'.format(*q)
         s += '\n  theta: {}'.format(theta)
 
@@ -542,7 +547,7 @@ def calibrate_z(file, em_lambda=None, master_channel=None, cyllens=None, progres
         error_plot(Ze, np.array([find_z(e, q) for e in E]) - Ze)
         pdf.savefig(fig)
 
-    return C, MagStr, theta, q
+    return channel, MagStr, theta, q
 
 
 def zhuang_ell(z, q):
@@ -635,7 +640,7 @@ def error_plot(x, d):
     dr = d[np.abs(x) < r]
 
     plt.text(0.5, 0.95, f'range: {2000 * r:.0f} nm', transform=plt.gca().transAxes, horizontalalignment='center')
-    plt.text(0.95, 0.55, f'std(error): {2000 * np.std(dr):.0f} nm', transform=plt.gca().transAxes,
+    plt.text(0.95, 0.55, f'std(error): {1000 * np.std(dr):.0f} nm', transform=plt.gca().transAxes,
              horizontalalignment='right')
 
-    print("Usable range: {} nm\nStandard deviation of the error: {} nm".format(int(2000 * r), int(2000 * np.std(dr))))
+    print(f'Usable range: {2000 * r:.0f} nm\nStandard deviation of the error: {1000 * np.std(dr):.0f} nm')
