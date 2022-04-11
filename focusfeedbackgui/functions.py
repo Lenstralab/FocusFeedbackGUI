@@ -237,18 +237,21 @@ def crop(im, x, y, m=np.nan):
         outside im the resulting pixels will be filled with mean(im)
         wp@tl20181129
     """
-    x = np.array(x).astype(int)
-    y = np.array(y).astype(int)
-    S = np.array(np.shape(im))
-    R = np.array([[min(y), max(y)], [min(x), max(x)]]).astype(int)
-    r = R.copy()
-    r[R[:, 0] < 1, 0] = 1
-    r[R[:, 1] > S, 1] = S[R[:, 1] > S]
-    jm = im[r[0, 0]:r[0, 1], r[1, 0]:r[1, 1]]
-    jm = np.concatenate((np.full((r[0, 0] - R[0, 0], np.shape(jm)[1]), m),
-                         jm, np.full((R[0, 1] - r[0, 1], np.shape(jm)[1]), m)), 0)
-    return np.concatenate((np.full((np.shape(jm)[0], r[1, 0] - R[1, 0]), m),
-                           jm, np.full((np.shape(jm)[0], R[1, 1] - r[1, 1]), m)), 1)
+    try:
+        x = np.array(x).astype(int)
+        y = np.array(y).astype(int)
+        S = np.array(np.shape(im))
+        R = np.array([[min(y), max(y)], [min(x), max(x)]]).astype(int)
+        r = R.copy()
+        r[R[:, 0] < 1, 0] = 1
+        r[R[:, 1] > S, 1] = S[R[:, 1] > S]
+        jm = im[r[0, 0]:r[0, 1], r[1, 0]:r[1, 1]]
+        jm = np.concatenate((np.full((r[0, 0] - R[0, 0], np.shape(jm)[1]), m),
+                             jm, np.full((R[0, 1] - r[0, 1], np.shape(jm)[1]), m)), 0)
+        return np.concatenate((np.full((np.shape(jm)[0], r[1, 0] - R[1, 0]), m),
+                               jm, np.full((np.shape(jm)[0], R[1, 1] - r[1, 1]), m)), 1)
+    except Exception:
+        return np.zeros((max(y)-min(y), max(x)-min(x)))
 
 
 def disk(s, dim=2):

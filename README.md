@@ -57,16 +57,18 @@ positions an experiment has been done.
 ## Tracking
 - Set the configuration in the 'Configuration' tab.
   - Set the cylindrical lens(es) to the correct position, both
-  physically (slider on the camera) and in the 'Cylindrical lens back/front' settings. Note that each magnification has a
-  different cylindrical lens.
+  physically (slider on the camera) and in the 'Cylindrical lens back/front' settings. Note that each magnification has
+  a different cylindrical lens.
   - Enable the desired Feedback channel(s) and set the correct emission wavelength for the enabled channel(s). The
   wavelength will be used to filter bad fits.
   - Make sure the correct duolink filter is set in the 'Duolink filterset' and 'Duolink filter' options.
 - Calibrate using beads.
+  - Make sure the settings in the 'Configuration' tab are correct. 
   - Put a slide with beads on the microscope.
-  - Make a few full frame z-stacks (100 nm interval, 101 planes). These stack can later be used to correct for
-  distortions caused by the cylindrical lens (daily or after each time the duolink filter is changed) or calibrate 
-  Zhuang mode feedback parameters (once for every magnification).
+  - Make one or more full frame z-stacks (100 nm interval, 101 planes). This stack can later also be used to correct for
+  distortions caused by the cylindrical lens (daily or after each time the duolink filter is changed)
+  - Calibrate by pressing the button 'Calibrate with beads' in the 'Configuration' tab.
+  - When the calibration is done, optionally save the calibration by using File>Save (Ctrl+S)
 - Track.
   - Configure ZEN for a time-lapse experiment.
   - Enable 'auto-save' in ZEN.

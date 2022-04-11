@@ -4,3 +4,6 @@ TransformParameters.0.txt
 *.tif
 *.pdf
 .idea
+/build/
+/dist/
+*.spec

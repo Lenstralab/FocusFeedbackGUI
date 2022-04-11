@@ -547,9 +547,9 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         print(s)
         MagStr = f'{im.magnification}x{10*im.optovar[0]:.0f}'
 
-        fig = plt.figure(figsize=A4)
-        error_plot(Ze, np.array([find_z(e, q) for e in E]) - Ze)
-        pdf.savefig(fig)
+        # fig = plt.figure(figsize=A4)
+        # error_plot(Ze, np.array([find_z(e, q) for e in E]) - Ze)
+        # pdf.savefig(fig)
 
     return channel, MagStr, theta, q
 

@@ -16,3 +16,4 @@ QMenuBar { color: #FFFFFF }
 QTabWidget { border-color: #454D62 }
 QTabBar::tab { background-color: #262E3E; color: #FFFFFF }
 QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF }
+QHeaderView::section { background-color: #454D62; color: #FFFFFF }
