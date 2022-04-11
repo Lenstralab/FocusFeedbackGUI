@@ -289,7 +289,9 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
             channel = channel
         if cyllens is not None:
             im.cyllens = cyllens
-        print(f'Using channel {channel}, sigma: {im.sigma[channel]}')
+        print(f'Using channel {channel}, sigma: {im.sigma[channel]} px')
+        if im.sigma[channel] < 1:
+            warnings.warn('sigma is smaller than 1 px, spot fitting, tracking and calibration will likely fail')
 
         a = detect_points(im.max(channel), im.sigma[channel])
 
@@ -347,10 +349,13 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         n_columns = 3
         n_rows = 5
 
-        a0 = a.query(f'R2>{r2lim[0]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.05 & dy_um<0.05 & de<0.2'
+        a0 = a.query(f'R2>{r2lim[0]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
                      ' & ds_um<0.2').copy()
 
         pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for _ in range(16))
+
+        if not len(a0):
+            raise Exception('Filters have excluded all beads, retry with a better stack.')
 
         for particles in group(list(set(a0['particle'])), n_rows * n_columns):
             fig = plt.figure(figsize=A4)
@@ -401,7 +406,7 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         py = np.array(py)
         dpy = np.array(dpy)
 
-        g = a.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.05 & dy_um<0.05 & de<0.2'
+        g = a.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
                     ' & ds_um<0.2').copy()
         x = [g.query('particle=={}'.format(i))['x'].mean() for i in pr]
         y = [g.query('particle=={}'.format(i))['y'].mean() for i in pr]
@@ -434,10 +439,9 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         f['ddy'] = dpy[:, 4]
         f['dc'] = px[:, 3] - py[:, 3]
         f['ddc'] = np.sqrt(dpx[:, 3] ** 2 + dpy[:, 3] ** 2)
-        dc = [i/(im.immersionN**2/1.33**2) for i in (0.1, 1.5)]
 
         f = f.query('0.1<sigmax<0.5 & 0.1<sigmay<0.5 & abs(Ax)<10 & abs(Bx)<10 & abs(Ay)<10 & abs(By)<10 & X2x<20'
-                    f' & X2y<20 & {dc[0]}<abs(dc)<{dc[1]} & cx<10 & cy<10')
+                    f' & X2y<20 & cx<10 & cy<10').dropna()
 
         Zx = np.array(())
         Zy = np.array(())

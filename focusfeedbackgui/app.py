@@ -510,7 +510,7 @@ class App(UiMainWindow):
             fwhm = self.NS.sigma[channel] * 2 * np.sqrt(2 * np.log(2))
             self.NS.limits[channel] = self.Manager.list([[-np.inf, np.inf]] * 8)
             self.NS.limits[channel][2] = [fwhm / 2, fwhm * 2]  # fraction of fwhm
-            self.NS.limits[channel][5] = [0.7, 1.3]  # ellipticity
+            self.NS.limits[channel][5] = [0.4, 2.5]  # ellipticity
             self.NS.limits[channel][7] = [0, np.inf]  # R2
         except ValueError:
             pass
