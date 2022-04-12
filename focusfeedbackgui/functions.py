@@ -299,3 +299,6 @@ def last_czi_file(folder=r'd:\data', t=np.inf):
         return ''
     else:
         return files[np.argmax(tm)]
+
+# trigger jit compile for fitting so we're ready sooner
+fitgauss(gaussian((16, 16, 2, 100000, 100, 1, 0), 32, 32).astype('int32'))

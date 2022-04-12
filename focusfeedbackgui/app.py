@@ -456,6 +456,7 @@ class App(UiMainWindow):
 
     def excepthook(self, *args, **kwargs):
         try:
+            traceback.print_exception(*args, **kwargs)
             QMessageBox.critical(self, 'Error', ''.join(traceback.format_exception(*args, **kwargs)))
         except Exception:
             traceback.print_exception(*args, **kwargs)
@@ -464,7 +465,9 @@ class App(UiMainWindow):
 
     def warnhook(self, message, category, filename, lineno, file=None, line=None):
         try:
-            QMessageBox.warning(self, 'Warning', warnings.formatwarning(message, category, filename, lineno, line))
+            warning = warnings.formatwarning(message, category, filename, lineno, line)
+            print(warning)
+            QMessageBox.warning(self, 'Warning', warning)
         except Exception:
             print(warnings.formatwarning(message, category, filename, lineno, line))
             print('During handling of the above warning, an exception occurred:')

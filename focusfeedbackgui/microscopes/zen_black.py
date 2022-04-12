@@ -507,9 +507,9 @@ class Events(QtCore.QThread):
         self.is_alive = True
         self.app = app
         self.zen = self.app.microscope
-        self.previous_zen = [None, False]
-        self.current_zen = [self.zen.current_doc, True]
-        self.zen.enable_event('LeftButtonDown', self.current_zen[0])
+        self.previous_zen = None
+        self.current_zen = self.zen.current_doc
+        self.zen.enable_event('LeftButtonDown', self.current_zen)
         self.args = args
         self.kwargs = kwargs
         self.event.connect(self.callback)
@@ -529,9 +529,15 @@ class Events(QtCore.QThread):
 
     def run(self):
         with Microscope(self.app.microscope_class, event_handler=self.event_handler()):
+            i = 0
             while not self.app.quit:
                 sleep(.01)
                 pythoncom.PumpWaitingMessages()
+                i = (i + 1) % 100
+                if not i:
+                    # this only works when zen is ready for it, and we can't know whether or not it worked,
+                    # so do it every second
+                    self.event.emit(('enable_event', ('LeftButtonDown',)))
         self.done.emit(None)
 
     def callback(self, args):
@@ -544,7 +550,12 @@ class Events(QtCore.QThread):
 
     @property
     def title(self):
-        return '' if not self.current_zen or not self.current_zen[0] else self.current_zen[0].Title()
+        return '' if not self.current_zen else self.current_zen.Title()
+
+    @error_wrap
+    def enable_event(self, event, *args, **kwargs):
+        self.zen.disable_event(event, self.previous_zen)
+        self.zen.enable_event(event, self.current_zen)
 
     @error_wrap
     def OnThrowEvent(self, *args):
@@ -580,8 +591,7 @@ class Events(QtCore.QThread):
             self.app.change_wavelengths()
         elif args[1] == 'HR_MainShutter1':
             if self.title != self.zen.title:  # current document changed
-                self.previous_zen = self.current_zen
-                self.current_zen = [self.zen.current_doc, False]  # ActiveDocObject, LMB enabled
+                self.previous_zen, self.current_zen = self.current_zen, self.zen.current_doc
             elif self.zen.is_experiment_running:
                 last_pos = self.zen.stage_pos
                 frame_size = self.zen.frame_size
@@ -589,13 +599,3 @@ class Events(QtCore.QThread):
                 self.app.map.append_data_docs(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
                                               frame_size[1] * pxsize / 1e6)
                 self.app.map.draw()
-
-            # the LMB event is not enabled on the current doc
-            if not self.current_zen[1] and self.app.center_on_click_box.isChecked():
-                if self.previous_zen and self.previous_zen[0]:
-                    self.zen.disable_event('LeftButtonDown', self.previous_zen[0])
-                if self.current_zen and self.current_zen[0]:
-                    for i in range(10):
-                        sleep(1)  # TODO: We don't know when ZEN is ready for this, so we just wait a bit
-                        self.zen.enable_event('LeftButtonDown', self.current_zen[0])
-                    self.current_zen[1] = True
