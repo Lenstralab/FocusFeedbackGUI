@@ -1,8 +1,10 @@
 import os
+import sys
 import yaml
 import re
+import warnings
+import traceback
 import numpy as np
-from sys import exit
 from shutil import copyfile
 from time import sleep, time
 from datetime import datetime
@@ -386,6 +388,9 @@ class UiMainWindow(QMainWindow):
 
 class App(UiMainWindow):
     def __init__(self):
+        super().__init__()
+        sys.excepthook = self.excepthook
+        warnings.showwarning = self.warnhook
         self.queue = Queue()
         self.Manager = Manager()
         self.NS = self.Manager.Namespace()
@@ -416,8 +421,6 @@ class App(UiMainWindow):
         self.ellipse = {}
         self.rectangle = None
         self.magnification_str = self.microscope.magnification_str
-
-        super().__init__()
 
         self.stay_primed_box.toggled.connect(self.stay_primed)
         self.center_on_click_box.toggled.connect(self.toggle_center_box)
@@ -450,6 +453,22 @@ class App(UiMainWindow):
         self.guithread = None
 
         self.microscope.wait(self, self.microscope_ready)
+
+    def excepthook(self, *args, **kwargs):
+        try:
+            QMessageBox.critical(self, 'Error', ''.join(traceback.format_exception(*args, **kwargs)))
+        except Exception:
+            traceback.print_exception(*args, **kwargs)
+            print('During handling of the above exception, another exception occurred:')
+            traceback.print_exc()
+
+    def warnhook(self, message, category, filename, lineno, file=None, line=None):
+        try:
+            QMessageBox.warning(self, 'Warning', warnings.formatwarning(message, category, filename, lineno, line))
+        except Exception:
+            print(warnings.formatwarning(message, category, filename, lineno, line))
+            print('During handling of the above warning, an exception occurred:')
+            traceback.print_exc()
 
     def closeEvent(self, *args, **kwargs):
         self.set_quit()
@@ -908,7 +927,7 @@ def main():
     freeze_support()  # to enable pyinstaller to work with multiprocessing
     app = QApplication([])
     window = App()
-    exit(app.exec())
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':

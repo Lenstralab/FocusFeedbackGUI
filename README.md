@@ -68,7 +68,9 @@ positions an experiment has been done.
   - Make one or more full frame z-stacks (100 nm interval, 101 planes). This stack can later also be used to correct for
   distortions caused by the cylindrical lens (daily or after each time the duolink filter is changed)
   - Calibrate by pressing the button 'Calibrate with beads' in the 'Configuration' tab.
-  - When the calibration is done, optionally save the calibration by using File>Save (Ctrl+S)
+  - When the calibration is done, check the calibration in the pdf file which is saved next to the file with the bead
+  stack. 
+  - Optionally save the calibration by using File>Save (Ctrl+S), it will be save in conf.yml.
 - Track.
   - Configure ZEN for a time-lapse experiment.
   - Enable 'auto-save' in ZEN.

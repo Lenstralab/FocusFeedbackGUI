@@ -5,8 +5,8 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="focusfeedbackgui",
-    packages=["focusfeedbackgui"],
-    version="2022.3.5",
+    packages=["focusfeedbackgui", "focusfeedbackgui.microscopes"],
+    version="2022.3.6",
     author="Wim Pomp @ Lenstra lab NKI",
     author_email="w.pomp@nki.nl",
     description="Live track particles.",
@@ -22,7 +22,7 @@ setuptools.setup(
                       'tqdm', 'PyQt5', 'pyyaml', 'numba', 'multipledispatch', 'icc_rt',
                       'pywin32; platform_system=="Windows"',
                       'tllab_common[transforms]@git+https://github.com/Lenstralab/tllab_common.git'],
-    scripts=['bin/focusfeedbackgui'],
-    package_data={'': ['conf.yml']},
+    entry_points={"console_scripts": ["focusfeedbackgui=focusfeedbackgui.__main__:main"]},
+    package_data={'': ['conf.yml', 'stylesheet.qss']},
     include_package_data=True,
 )

@@ -7,3 +7,4 @@ TransformParameters.0.txt
 /build/
 /dist/
 *.spec
+/venv/
