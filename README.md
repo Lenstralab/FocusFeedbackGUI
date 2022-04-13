@@ -1,22 +1,28 @@
 ![cyllensgui icon](Icon.ico)
 
-# Cylindrical Lens GUI
+# Focus Feedback GUI
 Gui to live track single particles. Written for Zeiss' Zen Black software.
 
 # Installation
-Clone the repository from git:
+- Clone the repository from git:
+
 
     git clone git@github.com:Lenstralab/FocusFeedbackGUI.git
 
-Install using pip:
+- Install using pip:
 
-    pip3 install -e FocusFeedbackGUI --user
+
+    pip install -e FocusFeedbackGUI --user
 
 Both -e and --user are optional: https://pip.pypa.io/en/stable/cli/pip_install/
 
 # Usage
+- Start Zen and configure it to acquire images and acquire at least one image, for example by pressing 'Continuous', if 
+you don't do this, Focus Feedback GUI will wait until you do it.
+- Run this command (you can make a shortcut to it):
 
-    python3 FocusFeedbackGUI/bin/focusfeedbackgui
+
+    python FocusFeedbackGUI/focusfeedbackgui
 
 The program should start and show a screen with 3 tabs.
 
