@@ -66,8 +66,11 @@ def gaussian7grid(p, xv, yv):
         efac = 1e-9
     else:
         efac = np.sqrt(np.log(2))/p[2]
-    dx = efac/p[5]
-    dy = efac*p[5]
+    if p[5] == 0:
+        dx = dy = efac
+    else:
+        dx = efac/p[5]
+        dy = efac*p[5]
     cos, sin = np.cos(p[6]), np.sin(p[6])
     x = 2*dx*(cos*(xv-p[0])-(yv-p[1])*sin)
     y = 2*dy*(cos*(yv-p[1])+(xv-p[0])*sin)

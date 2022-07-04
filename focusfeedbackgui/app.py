@@ -70,9 +70,10 @@ def feedbackloop(queue, ns, microscope):
                         if sum(detected)/len(detected) > 0.35:
                             fitted = True
                             ellipticity[channel] = a[5]
-                            xy_pos[channel] = a[:2]
+                            xy_pos[channel] = a[:2].copy()
                         else:
                             fitted = False
+                        a[:2] += np.array(ns.roi_pos) - ns.roi_size / 2
                     else:
                         fitted = False
                         detected.append(False)
@@ -112,13 +113,12 @@ def feedbackloop(queue, ns, microscope):
                             if ns.channels[next_channel_idx] in zmem:
                                 microscope.piezo_pos = zmem[ns.channels[next_channel_idx]]
 
-                if xy_pos:  # Maybe move stage or ROI  # TODO: report pos wrt to frame in stead of roi which can move
+                if xy_pos:  # Maybe move stage or ROI
                     xy = np.mean(list(xy_pos.values()), 0)
                     if ns.feedback_mode_xy == 1:
                         roi_pos += np.clip(xy - ns.roi_size / 2, -ns.max_step_xy, ns.max_step_xy)
                         ns.roi_pos = np.round(roi_pos).astype(int).tolist()
-
-                    if ns.feedback_mode_xy == 2:
+                    elif ns.feedback_mode_xy == 2:
                         microscope.move_stage_relative(*np.clip(xy - ns.roi_size / 2, -ns.max_step_xy, ns.max_step_xy)
                                                        * microscope.pxsize / 1e3)
 
@@ -477,7 +477,7 @@ class App(UiMainWindow):
         self.set_quit()
 
     def microscope_ready(self, _):
-        self.conf_load()
+        self.conf_load(True)
         self.duolink_filter_rdb.changeState(self.microscope.duolink_filter)
         self.change_cyllens()
         self.change_color()
@@ -636,7 +636,7 @@ class App(UiMainWindow):
                 self.conf = yaml_load(h)
             self.conf_filename = f
 
-    def conf_load(self):
+    def conf_load(self, initial=False):
         if 'cyllenses' in self.conf:
             values = ['None']
             if isinstance(self.conf['cyllenses'], (list, tuple)):
@@ -658,16 +658,17 @@ class App(UiMainWindow):
                 q[key] = value['q']
                 theta[key] = value['theta']
 
-        self.NS.max_step = self.conf.get('maxStep', 0.1)
-        self.max_step_fld.setText(f'{self.NS.max_step}')
-        self.NS.max_step_xy = self.conf.get('maxStepxy', 5)
-        self.max_step_xy_fld.setText(f'{self.NS.max_step_xy}')
-        self.NS.roi_size = self.conf.get('ROISize', 48)
-        self.roi_size_fld.setText(f'{self.NS.roi_size}')
-        self.NS.roi_pos = self.conf.get('ROIPos', [0, 0])
-        self.roi_pos_fld.setText(f'{self.NS.roi_pos}')
-        self.NS.gain = self.conf.get('gain', 5e-3)
-        self.NS.fast_mode = self.conf.get('fastMode', False)
+        if initial:
+            self.NS.max_step = self.conf.get('maxStep', 0.1)
+            self.max_step_fld.setText(f'{self.NS.max_step}')
+            self.NS.max_step_xy = self.conf.get('maxStepxy', 5)
+            self.max_step_xy_fld.setText(f'{self.NS.max_step_xy}')
+            self.NS.roi_size = self.conf.get('ROISize', 48)
+            self.roi_size_fld.setText(f'{self.NS.roi_size}')
+            self.NS.roi_pos = self.conf.get('ROIPos', [0, 0])
+            self.roi_pos_fld.setText(f'{self.NS.roi_pos}')
+            self.NS.gain = self.conf.get('gain', 5e-3)
+            self.NS.fast_mode = self.conf.get('fastMode', False)
 
     def change_duolink_filter(self, val):
         if val == '1':
@@ -871,8 +872,8 @@ class App(UiMainWindow):
                                     self.plots.draw()
 
                                     if fitted[-1]:
-                                        x = float(a[-1, 0] + (width - self.NS.roi_size) / 2 + self.NS.roi_pos[0])
-                                        y = float(a[-1, 1] + (height - self.NS.roi_size) / 2 + self.NS.roi_pos[1])
+                                        x = float(a[-1, 0] + width / 2)
+                                        y = float(a[-1, 1] + height / 2)
                                         radius = float(a[-1, 2])
                                         ellipticity = float(a[-1, 5])
                                         self.ellipse[channel] = self.microscope.draw_ellipse(
