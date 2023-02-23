@@ -552,7 +552,7 @@ class App(UiMainWindow):
             if file:
 
                 self.calibz_thread = QThread(cyl.calibrate_z, self.calibrate_done, file,
-                                             self.channels_box.textBoxValues, self.NS.channels[0], self.NS.cyllens,
+                                             self.channels_box.textBoxValues, self.NS.channels[:1], self.NS.cyllens,
                                              self.calibrate_progress)
                 self.calibrate_progress(0)
             else:
@@ -563,14 +563,15 @@ class App(UiMainWindow):
     def calibrate_progress(self, progress):
         self.calibrate_btn.setText(f'Calibrating: {progress:.0f}%')
 
-    def calibrate_done(self, channel, magnification_str, theta, q):
+    def calibrate_done(self, result):
         try:
-            if not self.get_cyllens(channel) + magnification_str in self.conf:
-                self.conf[self.get_cyllens(channel) + magnification_str] = {}
-            self.conf[self.get_cyllens(channel) + magnification_str]['theta'] = float(theta)
-            self.conf[self.get_cyllens(channel) + magnification_str]['q'] = q.tolist()
-            self.NS.theta[self.get_cm_str(channel)] = float(theta)
-            self.NS.q[self.get_cyllens(channel) + magnification_str] = q.tolist()
+            if not self.get_cyllens(result['channels'][0]) + result['magnification_str'] in self.conf:
+                self.conf[self.get_cyllens(result['channels'][0]) + result['magnification_str']] = {}
+            self.conf[self.get_cyllens(result['channels'][0])
+                      + result['magnification_str']]['theta'] = float(result['theta'])
+            self.conf[self.get_cyllens(result['channels'][0]) + result['magnification_str']]['q'] = result['q'].tolist()
+            self.NS.theta[self.get_cm_str(result['channels'][0])] = float(result['theta'])
+            self.NS.q[self.get_cyllens(result['channels'][0]) + result['magnification_str']] = result['q'].tolist()
             self.calibrating = False
             self.calibrate_btn.setText('Calibrate with beads')
             self.calibrate_btn.setEnabled(True)

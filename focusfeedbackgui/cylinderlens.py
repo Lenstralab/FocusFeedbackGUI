@@ -151,7 +151,7 @@ def fit_zhuang(z, s, ds, rec=True):
 
 # functions for calibration
 
-def detect_points(im, sigma, mask=None, footprint=15):
+def detect_points(im, sigma, mask=None, footprint=15, filter=True):
     """ Find interesting spots to which try to fit gaussians in a single frame
         im:      2D or 3D array
         sigma:   theoretical width of the psf (isotropic)
@@ -216,10 +216,11 @@ def detect_points(im, sigma, mask=None, footprint=15):
         f['o_ini'] = []
         f['R2'] = []
 
-    f = f.dropna()
-    if len(f) > 2:
-        th = skimage.filters.threshold_otsu(f['i_ini'])
-        f = f.query('i_ini>{}'.format(th))
+    if filter:
+        f = f.dropna()
+        if len(f) > 2:
+            th = skimage.filters.threshold_otsu(f['i_ini'])
+            f = f.query('i_ini>{}'.format(th))
     return f
 
 
@@ -275,36 +276,43 @@ def group(it, n):
         yield it[n*i:n*i+n]
 
 
-def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None, elim=None, r2lim=None):
+def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=None, r2lim=None, path=None):
     if elim is None:
         elim = 0.4, 2.5
     if r2lim is None:
         r2lim = 0.6, 0.75
-    with imread(file) as im, PdfPages(os.path.splitext(file)[0] + '_Cyllens_calib.pdf') as pdf:
-        if em_lambda is not None:
-            if np.isscalar(em_lambda):
-                em_lambda = [em_lambda] * im.shape[2]
-            im.sigma = [i / 2 / im.NA / im.pxsize / 1000 for i in em_lambda]
-        if channel is None:
-            channel = channel
+    if path is None:
+        path = os.path.splitext(file)[0]
+    with imread(file) as im, PdfPages(f'{path}_Cyllens_calib.pdf') as pdf:
+        if em_lambdas is not None:
+            if np.isscalar(em_lambdas):
+                em_lambdas = [em_lambdas] * im.shape[2]
+            im.sigma = [i / 2 / im.NA / im.pxsize / 1000 for i in em_lambdas]
         if cyllens is not None:
             im.cyllens = cyllens
-        print(f'Using channel {channel}, sigma: {im.sigma[channel]} px')
-        if im.sigma[channel] < 1:
+        print(f'Using channels {channels}, sigma: {[im.sigma[channel] for channel in channels]} px')
+        if np.any([im.sigma[channel] < 1 for channel in channels]):
             warnings.warn('sigma is smaller than 1 px, spot fitting, tracking and calibration will likely fail')
 
-        a = detect_points(im.max(channel), im.sigma[channel])
+        detections = []
+        for channel in channels:
+            detected = detect_points(im.max(channel), im.sigma[channel])
+            detected['C'] = channel
+            detections.append(detected)
+        detections = pandas.concat(detections, ignore_index=True)
 
-        a['particle'] = range(len(a))
+        detections['particle'] = range(len(detections))
 
         fig = plt.figure(figsize=A4)
         gs = GridSpec(3, 5, figure=fig)
 
         fig.add_subplot(gs[:2, :5])
-        plt.imshow(im.max(channel))
-        plt.plot(a['x'], a['y'], 'or', markerfacecolor='none')
-        for i in a.index:
-            plt.text(a.loc[i, 'x'], a.loc[i, 'y'], a.loc[i, 'particle'], color='w')
+        plt.imshow(np.hstack([im.max(channel) for channel in channels]))
+        for i, channel in enumerate(channels):
+            b = detections.query(f'C=={channel}')
+            plt.plot(b['x'] + i * im.shape[0], b['y'], 'or', markerfacecolor='none')
+            for _, row in b.iterrows():
+                plt.text(row['x'] + i * im.shape[0], row['y'], f"{row['particle']:.0f}", color='w')
 
         d = pandas.DataFrame()
 
@@ -313,22 +321,21 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
 
         for T in range(im.shape[4]):
             for Z in range(zmax):
-                b = a.copy()
-                b['C'] = channel
+                b = detections.copy()
                 b['Z'] = Z
                 b['T'] = T
                 b['z_um'] = Z * im.deltaz
-                b['frame'] = im.czt2n(channel, Z, T)
+                b['frame'] = [im.czt2n(channel, Z, T) for channel in b['C']]
                 d = pandas.concat((d, b))
         d = d.reset_index(drop=True)
         if callable(progress):
             pr = Progress(len(d), progress)
         else:
             pr = True
-        a = localize(d, im, theta=None, progress=pr)
+        detections = localize(d, im, theta=None, progress=pr)
         if callable(progress):
             pr.half = 1
-        b = a.copy().dropna(subset=['theta']).query('R2>0.3')
+        b = detections.copy().dropna(subset=['theta']).query('R2>0.3')
 
         fig.add_subplot(gs[2, 1:4])
         plt.hist((b['theta'] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100)
@@ -338,30 +345,30 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         theta, dtheta = utilities.circ_weighted_mean(b['theta'], b['dtheta'], np.pi / 2)
         print('θ = {} ± {}'.format(theta, dtheta))
 
-        a = localize(d, im, theta=theta, progress=pr)
-        a['particle'] = d['particle']
-        a['s_um'] = a['s'] * im.pxsize
-        a['ds_um'] = a['ds'] * im.pxsize
-        a['dx_um'] = a['dx'] * im.pxsize
-        a['dy_um'] = a['dy'] * im.pxsize
+        detections = localize(d, im, theta=theta, progress=pr)
+        detections['particle'] = d['particle']
+        detections['s_um'] = detections['s'] * im.pxsize
+        detections['ds_um'] = detections['ds'] * im.pxsize
+        detections['dx_um'] = detections['dx'] * im.pxsize
+        detections['dy_um'] = detections['dy'] * im.pxsize
 
         # individual Zhuang fits
         n_columns = 3
         n_rows = 5
 
-        a0 = a.query(f'R2>{r2lim[0]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
-                     ' & ds_um<0.2').copy()
+        filtered = detections.query(f'R2>{r2lim[0]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} &'
+                                    ' dx_um<0.2 & dy_um<0.2 & de<0.2 & ds_um<0.2').copy()
 
         pr, px, dpx, py, dpy, X2x, X2y, R2x, R2y, z, sx, dsx, sy, dsy, Nx, Ny = ([] for _ in range(16))
 
-        if not len(a0):
+        if not len(filtered):
             raise Exception('Filters have excluded all beads, retry with a better stack.')
 
-        for particles in group(list(set(a0['particle'])), n_rows * n_columns):
+        for particles in group(list(set(filtered['particle'])), n_rows * n_columns):
             fig = plt.figure(figsize=A4)
             gs = GridSpec(n_rows, n_columns, figure=fig)
             for i, p in enumerate(particles):
-                b = a0.query('particle=={}'.format(p)).copy()
+                b = filtered.query('particle=={}'.format(p)).copy()
 
                 pr.append(int(p))
                 z.append(np.array(b['z_um']))
@@ -406,8 +413,8 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         py = np.array(py)
         dpy = np.array(dpy)
 
-        g = a.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
-                    ' & ds_um<0.2').copy()
+        g = detections.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
+                             ' & ds_um<0.2').copy()
         x = [g.query('particle=={}'.format(i))['x'].mean() for i in pr]
         y = [g.query('particle=={}'.format(i))['y'].mean() for i in pr]
 
@@ -539,19 +546,17 @@ def calibrate_z(file, em_lambda=None, channel=None, cyllens=None, progress=None,
         else:
             m = ''
 
-        s = '{}{}{:.0f}:'.format(im.cyllens[channel], m, im.optovar[0] * 10)
+        s = '{}{}{:.0f}:'.format(im.cyllens[channels[0]], m, im.optovar[0] * 10)
         s += '\n  q: [{}, {}, {}, {}, {}, {}, {}, {}, {}]'.format(*q)
         s += '\n  theta: {}'.format(theta)
 
         print('To put in CylLensGUI config file:')
         print(s)
-        MagStr = f'{im.magnification}x{10*im.optovar[0]:.0f}'
+        magnification_str = f'{im.magnification}x{10*im.optovar[0]:.0f}'
 
-        # fig = plt.figure(figsize=A4)
-        # error_plot(Ze, np.array([find_z(e, q) for e in E]) - Ze)
-        # pdf.savefig(fig)
-
-    return channel, MagStr, theta, q
+    return {'channels': channels, 'magnification_str': magnification_str, 'theta': theta, 'q': q,
+            'detections': detections, 'filtered': filtered, 'Ze': Ze, 'E': E, 'z': z, 'sx': sx, 'sy': sy,
+            'dsx': dsx, 'dsy': dsy}
 
 
 def zhuang_ell(z, q):

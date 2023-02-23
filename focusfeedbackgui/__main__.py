@@ -22,7 +22,7 @@ def main():
     if args.mode.lower().startswith('track'):
         app.main()
     elif args.mode.lower().startswith('cali'):
-        calibrate_z(args.file, args.emission, args.channel)
+        calibrate_z(args.file, args.emission, (args.channel,))
     elif args.mode.lower().startswith('trans') or args.mode.lower().startswith('warp'):
         warp(args.file, args.out, args.channel, args.zslice, args.time, args.split, args.force)
     elif args.mode.lower().startswith('info'):
