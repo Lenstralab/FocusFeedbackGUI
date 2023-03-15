@@ -219,7 +219,7 @@ def detect_points(im, sigma, mask=None, footprint=15, filter=True):
     if filter:
         f = f.dropna()
         if len(f) > 2:
-            th = skimage.filters.threshold_otsu(f['i_ini'])
+            th = skimage.filters.threshold_otsu(f['i_ini'].to_numpy())
             f = f.query('i_ini>{}'.format(th))
     return f
 

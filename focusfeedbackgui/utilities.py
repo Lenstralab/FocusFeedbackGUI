@@ -3,7 +3,7 @@ import re
 import os
 import warnings
 import numpy as np
-from PyQt5 import QtCore
+from PySide2 import QtCore
 from traceback import format_exc
 from tllab_common.wimread import imread
 
@@ -25,7 +25,7 @@ def yaml_load(f):
 
 
 class QThread(QtCore.QThread):
-    done = QtCore.pyqtSignal(object)
+    done = QtCore.Signal(object)
 
     def __init__(self, target, callback=None, *args, **kwargs):
         super().__init__()

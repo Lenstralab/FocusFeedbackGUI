@@ -7,7 +7,7 @@ from threading import get_ident
 from functools import partial
 from enum import Enum
 from collections import OrderedDict
-from PyQt5 import QtCore
+from PySide2 import QtCore
 from focusfeedbackgui.utilities import QThread, error_wrap
 from focusfeedbackgui.microscopes import MicroscopeClass
 
@@ -499,8 +499,8 @@ class EventHandlerMetaClass(type):
 
 
 class Events(QtCore.QThread):
-    done = QtCore.pyqtSignal(object)
-    event = QtCore.pyqtSignal(object)
+    done = QtCore.Signal(object)
+    event = QtCore.Signal(object)
 
     def __init__(self, app, *args, **kwargs):
         super().__init__()

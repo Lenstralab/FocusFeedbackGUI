@@ -297,11 +297,14 @@ def last_czi_file(folder=r'd:\data', t=np.inf):
     """
     files = glob(os.path.join(folder, '**', '*.czi'), recursive=True)
     tm = [os.path.getctime(file) for file in files]
-    t_newest = np.max(tm)
-    if time() - t_newest > t:
+    if not tm:
         return ''
     else:
-        return files[np.argmax(tm)]
+        t_newest = np.max(tm)
+        if time() - t_newest > t:
+            return ''
+        else:
+            return files[np.argmax(tm)]
 
 # trigger jit compile for fitting so we're ready sooner
 fitgauss(gaussian((16, 16, 2, 100000, 100, 1, 0), 32, 32).astype('int32'))

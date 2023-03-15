@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import *
+from PySide2.QtWidgets import *
 import warnings
 import numpy as np
 from traceback import format_exc

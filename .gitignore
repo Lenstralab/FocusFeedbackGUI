@@ -8,3 +8,4 @@ TransformParameters.0.txt
 /dist/
 *.spec
 /venv/
+*.czi

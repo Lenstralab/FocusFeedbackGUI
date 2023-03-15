@@ -11,8 +11,8 @@ from datetime import datetime
 from functools import partial
 from multiprocessing import Process, Queue, Manager, freeze_support
 from collections import deque
-from PyQt5.QtWidgets import *
-from PyQt5 import QtCore
+from PySide2.QtWidgets import *
+from PySide2 import QtCore
 from focusfeedbackgui import QGui
 from focusfeedbackgui import cylinderlens as cyl
 from focusfeedbackgui import functions
@@ -932,7 +932,7 @@ def main():
     freeze_support()  # to enable pyinstaller to work with multiprocessing
     app = QApplication([])
     window = App()
-    sys.exit(app.exec())
+    sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
