@@ -2,91 +2,13 @@ import numpy as np
 import scipy.optimize
 import scipy.special
 import scipy.ndimage
-from numba import jit
 import os
 from time import time
 from glob import glob
+from .functions_rs import *
 
 
 np.seterr(invalid='ignore')
-
-
-@jit(nopython=True, nogil=True, fastmath=True)
-def meshgrid(x, y):
-    s = (len(y), len(x))
-    xv = np.zeros(s)
-    yv = np.zeros(s)
-    for i in range(s[0]):
-        for j in range(s[1]):
-            xv[i, j] = x[j]
-            yv[i, j] = y[i]
-    return xv, yv
-
-
-@jit(nopython=True, nogil=True, fastmath=True)
-def erf(x):
-    # save the sign of x
-    sign = 1 if x >= 0 else -1
-    x = abs(x)
-
-    # constants
-    a1 = 0.254829592
-    a2 = -0.284496736
-    a3 = 1.421413741
-    a4 = -1.453152027
-    a5 = 1.061405429
-    p = 0.3275911
-
-    # A&S formula 7.1.26
-    t = 1.0 / (1.0 + p * x)
-    y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * np.exp(-x * x)
-    return sign * y  # erf(-x) = -erf(x)
-
-
-@jit(nopython=True, nogil=True, fastmath=True)
-def erf2(x):
-    s = x.shape
-    y = np.zeros(s)
-    for i in range(s[0]):
-        for j in range(s[1]):
-            y[i, j] = erf(x[i, j])
-    return y
-
-
-@jit(nopython=True, nogil=True, fastmath=True)
-def gaussian7grid(p, xv, yv):
-    """ p: [x, y, fwhm, area, offset, ellipticity, angle towards x-axis]
-        xv, yv = meshgrid(np.arange(Y),np.arange(X))
-            calculation of meshgrid is done outside, so it doesn't
-            have to be done each time this function is run
-        reimplemented for numba, small deviations from true result
-            possible because of reimplementation of erf
-    """
-    if p[2] == 0:
-        efac = 1e-9
-    else:
-        efac = np.sqrt(np.log(2))/p[2]
-    if p[5] == 0:
-        dx = dy = efac
-    else:
-        dx = efac/p[5]
-        dy = efac*p[5]
-    cos, sin = np.cos(p[6]), np.sin(p[6])
-    x = 2*dx*(cos*(xv-p[0])-(yv-p[1])*sin)
-    y = 2*dy*(cos*(yv-p[1])+(xv-p[0])*sin)
-    return p[3]/4*(erf2(x+dx)-erf2(x-dx))*(erf2(y+dy)-erf2(y-dy))+p[4]
-
-
-def gaussian(p, x, y):
-    """ p: [x,y,fwhm,area,offset,ellipticity,angle towards x-axis]
-    default ellipticity & angle: 1 resp. 0
-    X,Y: size of image
-    reimplemented for numba, small deviations from true result
-        possible because of reimplementation of erf for numba
-    """
-    xv, yv = meshgrid(np.arange(y), np.arange(x))
-    p = tuple([float(i) for i in p])
-    return gaussian7grid(p, xv, yv)
 
 
 def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
@@ -116,7 +38,7 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         q = p
         cs = cr
         S = np.shape(jm)
-        xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
+        xv, yv = meshgrid(np.arange(S[1], dtype=float), np.arange(S[0]), dtype=float)
     else:  # Full fitting
         p[0:2] += cr[:, 0]
         s = 2 * np.ceil(p[2])
@@ -124,7 +46,7 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         jm = crop(im, *cs)
         S = np.shape(jm)
         p[0:2] -= cs[:, 0]
-        xv, yv = meshgrid(np.arange(S[1]), np.arange(S[0]))
+        xv, yv = meshgrid(np.arange(S[1], dtype=float), np.arange(S[0], dtype=float))
         if theta is None:  # theta free
             def g(pf):
                 return np.sum((jm - gaussian7grid(pf, xv, yv)) ** 2)
@@ -307,4 +229,4 @@ def last_czi_file(folder=r'd:\data', t=np.inf):
             return files[np.argmax(tm)]
 
 # trigger jit compile for fitting so we're ready sooner
-fitgauss(gaussian((16, 16, 2, 100000, 100, 1, 0), 32, 32).astype('int32'))
+fitgauss(gaussian(np.array((16, 16, 2, 100000, 100, 1, 0), float), 32, 32).astype('int32'))
