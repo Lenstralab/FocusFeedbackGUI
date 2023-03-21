@@ -4,17 +4,15 @@
 Gui to live track single particles. Written for Zeiss' Zen Black software.
 
 # Installation
-- Clone the repository from git:
-
-
-    git clone git@github.com:Lenstralab/FocusFeedbackGUI.git
-
+- Install Python 3.10 or 3.11: https://www.python.org/
+- Install Rust: https://rustup.rs/
 - Install using pip:
 
 
-    pip install -e FocusFeedbackGUI --user
+    pip install git+https://github.com/Lenstralab/FocusFeedbackGUI.git
 
-Both -e and --user are optional: https://pip.pypa.io/en/stable/cli/pip_install/
+- Configure:
+Edit AppData\...\Python3x\site-packages\focusfeedbackgui\conf.yml
 
 # Usage
 - Start Zen and configure it to acquire images and acquire at least one image, for example by pressing 'Continuous', if 
@@ -30,7 +28,7 @@ The program should start and show a screen with 3 tabs.
 The 'Main' tab shows graphs to graph the ellipticity, intensity,
 width, R-squared, piezo position and particle position during the experiment. Above the graphs are controls for the
 feedback, which are grayed out at the moment.
-- Stay primed: keep the GUI ready and waiting for a new time lapse experiment to start, as soon as an experiment is
+- Stay primed: keep the GUI ready and waiting for a new time-lapse experiment to start, as soon as an experiment is
 started in ZEN, the GUI will start tracking.
 - Center on click: When this is enabled, it is possible to click anywhere in the image in ZEN, and the GUI will instruct
 ZEN to center the sample on that position.
@@ -109,4 +107,4 @@ extension. This file contains metadata about the experiment and the parameters f
 
 ## Configuration
 The file 'conf.yml' contains configuration and calibration for the GUI. See the configuration file for more details.
-Some of the values can be changed by the gui and then saved by using the File>Save (As) menu.
+Some values can be changed by the gui and then saved by using the File>Save (As) menu.

@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "focusfeedbackgui"
-version = "2023.3.0"
+version = "2023.3.1"
 description = "Live track particles."
 readme = "README.md"
 authors = [{ name = "Wim Pomp @ Lenstra lab NKI", email = "w.pomp@nki.nl" }]
-requires-python = ">=3.8, <3.11"
+requires-python = ">=3.10, <3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
@@ -16,7 +16,7 @@ classifiers = [
 ]
 keywords = ["microscopy", "focus", "feedback"]
 dependencies = ["numpy>=1.16.5", "scipy", "matplotlib", "parfor>=2021.7.1", "scikit-image>=0.18.0", "pandas",
-    "pyside2", "pyyaml", "icc_rt", "pywin32; platform_system==\"Windows\"", "tllab-common[transforms]>=2023.3.0"]
+    "pyside2", "pyyaml", "pywin32; platform_system==\"Windows\"", "tllab-common[transforms]>=2023.3.0"]
 
 [project.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"

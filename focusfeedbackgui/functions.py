@@ -38,7 +38,7 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         q = p
         cs = cr
         S = np.shape(jm)
-        xv, yv = meshgrid(np.arange(S[1], dtype=float), np.arange(S[0]), dtype=float)
+        xv, yv = meshgrid(np.arange(S[1], dtype=float), np.arange(S[0], dtype=float))
     else:  # Full fitting
         p[0:2] += cr[:, 0]
         s = 2 * np.ceil(p[2])
@@ -77,7 +77,7 @@ def fitgaussint(im, theta=None):
     if theta is None:
         theta = 0
     S = np.shape(im)
-    q = np.full(7, 0).astype('float')
+    q = np.zeros(7, 'float')
 
     x, y = np.meshgrid(range(S[0]), range(S[1]))
     q[4] = np.nanmin(im)
@@ -227,6 +227,3 @@ def last_czi_file(folder=r'd:\data', t=np.inf):
             return ''
         else:
             return files[np.argmax(tm)]
-
-# trigger jit compile for fitting so we're ready sooner
-fitgauss(gaussian(np.array((16, 16, 2, 100000, 100, 1, 0), float), 32, 32).astype('int32'))
