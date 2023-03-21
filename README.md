@@ -4,7 +4,7 @@
 Gui to live track single particles. Written for Zeiss' Zen Black software.
 
 # Installation
-- Install Python 3.10 or 3.11: https://www.python.org/
+- Install Python 3.8, 3.9 or 3.10: https://www.python.org/
 - Install Rust: https://rustup.rs/
 - Install using pip:
 
@@ -12,7 +12,7 @@ Gui to live track single particles. Written for Zeiss' Zen Black software.
     pip install git+https://github.com/Lenstralab/FocusFeedbackGUI.git
 
 - Configure:
-Edit AppData\...\Python3x\site-packages\focusfeedbackgui\conf.yml
+Edit C:\Program Files\Python3x\Lib\site-packages\focusfeedbackgui\conf.yml
 
 # Usage
 - Start Zen and configure it to acquire images and acquire at least one image, for example by pressing 'Continuous', if 

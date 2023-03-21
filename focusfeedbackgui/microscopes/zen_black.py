@@ -512,8 +512,9 @@ class Events(QtCore.QThread):
         self.zen.enable_event('LeftButtonDown', self.current_zen)
         self.args = args
         self.kwargs = kwargs
-        self.event.connect(self.callback)
-        self.done.connect(self.join)
+        # TODO fix this: "TypeError: native Qt signal is not callable", used to work with PyQt5
+        # self.event.connect(self.callback)
+        # self.done.connect(self.join)
         self.start()
 
     def event_handler(self):
@@ -535,7 +536,7 @@ class Events(QtCore.QThread):
                 pythoncom.PumpWaitingMessages()
                 i = (i + 1) % 100
                 if not i:
-                    # this only works when zen is ready for it, and we can't know whether or not it worked,
+                    # this only works when zen is ready for it, and we can't know whether it worked,
                     # so do it every second
                     self.event.emit(('enable_event', ('LeftButtonDown',)))
         self.done.emit(None)

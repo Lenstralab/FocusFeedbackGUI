@@ -6,6 +6,7 @@ TransformParameters.0.txt
 .idea
 /build/
 /dist/
+/target/
 *.spec
 /venv/
 *.czi
