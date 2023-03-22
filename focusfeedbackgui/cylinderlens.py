@@ -653,3 +653,4 @@ def error_plot(x, d):
              horizontalalignment='right')
 
     print(f'Usable range: {2000 * r:.0f} nm\nStandard deviation of the error: {1000 * np.std(dr):.0f} nm')
+    return 2000 * r, 1000 * np.std(dr)
