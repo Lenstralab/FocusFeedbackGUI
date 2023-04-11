@@ -25,7 +25,7 @@ def yaml_load(f):
 
 
 class QThread(QtCore.QThread):
-    done = QtCore.Signal(object)
+    done_signal = QtCore.Signal(object)
 
     def __init__(self, target, callback=None, *args, **kwargs):
         super().__init__()
@@ -34,15 +34,15 @@ class QThread(QtCore.QThread):
         self.args = args
         self.kwargs = kwargs
         self.callback = callback
-        self.done.connect(self.join)
+        self.done_signal.connect(self.join)
         self.start()
 
     def run(self):
         try:
-            self.done.emit((0, self.target(*self.args, **self.kwargs)))
+            self.done_signal.emit((0, self.target(*self.args, **self.kwargs)))
         except Exception:
             warnings.warn(f'\n{format_exc()}')
-            self.done.emit((1, format_exc()))
+            self.done_signal.emit((1, format_exc()))
 
     def join(self, state):
         self.quit()

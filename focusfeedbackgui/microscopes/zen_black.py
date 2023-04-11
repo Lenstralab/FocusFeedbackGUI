@@ -499,8 +499,8 @@ class EventHandlerMetaClass(type):
 
 
 class Events(QtCore.QThread):
-    done = QtCore.Signal(object)
-    event = QtCore.Signal(object)
+    done_signal = QtCore.Signal(object)
+    event_signal = QtCore.Signal(object)
 
     def __init__(self, app, *args, **kwargs):
         super().__init__()
@@ -512,20 +512,19 @@ class Events(QtCore.QThread):
         self.zen.enable_event('LeftButtonDown', self.current_zen)
         self.args = args
         self.kwargs = kwargs
-        # TODO fix this: "TypeError: native Qt signal is not callable", used to work with PyQt5
-        # self.event.connect(self.callback)
-        # self.done.connect(self.join)
+        self.event_signal.connect(self.callback)
+        self.done_signal.connect(self.join)
         self.start()
 
     def event_handler(self):
         class EventHandlerCls(metaclass=EventHandlerMetaClass):
             @staticmethod
             def OnThrowEvent(*args):
-                self.event.emit(('OnThrowEvent', args))
+                self.event_signal.emit(('OnThrowEvent', args))
 
             @staticmethod
             def OnThrowPropertyEvent(*args):
-                self.event.emit(('OnThrowPropertyEvent', args))
+                self.event_signal.emit(('OnThrowPropertyEvent', args))
         return EventHandlerCls
 
     def run(self):
@@ -538,8 +537,8 @@ class Events(QtCore.QThread):
                 if not i:
                     # this only works when zen is ready for it, and we can't know whether it worked,
                     # so do it every second
-                    self.event.emit(('enable_event', ('LeftButtonDown',)))
-        self.done.emit(None)
+                    self.event_signal.emit(('enable_event', ('LeftButtonDown',)))
+        self.done_signal.emit(None)
 
     def callback(self, args):
         getattr(self, args[0])(*args[1])
