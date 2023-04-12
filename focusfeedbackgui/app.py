@@ -9,7 +9,7 @@ from shutil import copyfile
 from time import sleep, time
 from datetime import datetime
 from functools import partial
-from multiprocessing import Process, Queue, Manager, freeze_support
+from multiprocessing import Process, Queue, Manager
 from collections import deque
 from PySide2.QtWidgets import *
 from PySide2 import QtCore
@@ -929,7 +929,6 @@ class App(UiMainWindow):
 
 
 def main():
-    freeze_support()  # to enable pyinstaller to work with multiprocessing
     app = QApplication([])
     window = App()
     sys.exit(app.exec_())

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
+from multiprocessing import freeze_support
 from focusfeedbackgui import app
 from focusfeedbackgui.cylinderlens import calibrate_z
 from focusfeedbackgui.utilities import warp, info
@@ -30,4 +31,5 @@ def main():
 
 
 if __name__ == '__main__':
+    freeze_support()  # to enable pyinstaller to work with multiprocessing
     main()

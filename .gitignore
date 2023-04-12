@@ -7,6 +7,5 @@ TransformParameters.0.txt
 /build/
 /dist/
 /target/
-*.spec
-/venv/
+/venv*/
 *.czi
