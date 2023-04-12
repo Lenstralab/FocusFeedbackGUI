@@ -5,9 +5,11 @@ from traceback import format_exc
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib import rcParams, pyplot
+from focusfeedbackgui.utilities import error_wrap
+
+
 rcParams.update({'figure.autolayout': True})
 np.seterr(all='ignore')
-from focusfeedbackgui.utilities import error_wrap
 
 
 class RadioButtons(QWidget):

@@ -1,6 +1,6 @@
 [project]
 name = "focusfeedbackgui"
-version = "2023.4.0"
+version = "2023.4.1"
 description = "Live track particles."
 readme = "README.md"
 authors = [{ name = "Wim Pomp @ Lenstra lab NKI", email = "w.pomp@nki.nl" }]
