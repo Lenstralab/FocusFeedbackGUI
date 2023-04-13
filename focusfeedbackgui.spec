@@ -1,17 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
+from pathlib import Path
 
 
 block_cipher = None
+path = Path('focusfeedbackgui')
 
 
 a = Analysis(
-    ['focusfeedbackgui\\__main__.py'],
+    [path / '__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[('focusfeedbackgui\\stylesheet.qss', 'focusfeedbackgui'),
-           ('focusfeedbackgui\\conf.yml', 'focusfeedbackgui')],
+    datas=[(path / 'stylesheet.qss', 'focusfeedbackgui'), (path / 'conf.yml', 'focusfeedbackgui')],
     hiddenimports=collect_submodules('focusfeedbackgui'),
     hookspath=[],
     hooksconfig={},
@@ -29,7 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='__main__',
+    name='focusfeedbackgui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
