@@ -1,5 +1,4 @@
 *.egg-info
-CylLensGUI.lnk
 TransformParameters.0.txt
 *.tif
 *.pdf
@@ -9,3 +8,6 @@ TransformParameters.0.txt
 /target/
 /venv*/
 *.czi
+/FocusFeedbackGUI_setup.exe
+/focusfeedbackgui/functions_rs.pyd
+/Cargo.lock

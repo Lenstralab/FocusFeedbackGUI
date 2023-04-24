@@ -2,10 +2,11 @@
 
 from PyInstaller.utils.hooks import collect_submodules
 from pathlib import Path
+import focusfeedbackgui
 
 
 block_cipher = None
-path = Path('focusfeedbackgui')
+path = Path(focusfeedbackgui.__file__).parent
 
 
 a = Analysis(
@@ -41,6 +42,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='Icon.ico'
 )
 coll = COLLECT(
     exe,

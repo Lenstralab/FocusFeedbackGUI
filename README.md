@@ -4,6 +4,12 @@
 Gui to live track single particles. Written for Zeiss' Zen Black software.
 
 # Installation
+## With installer
+- Run FocusFeedbackGUI_setup.exe
+- Configure:
+Start Menu > FocusFeedbackGUI/configuration and edit the file
+
+## From source
 - Install Python 3.8, 3.9 or 3.10: https://www.python.org/
 - Install Rust: https://rustup.rs/
 - Install using pip:
@@ -17,7 +23,7 @@ Edit C:\Program Files\Python3x\Lib\site-packages\focusfeedbackgui\conf.yml
 # Usage
 - Start Zen and configure it to acquire images and acquire at least one image, for example by pressing 'Continuous', if 
 you don't do this, Focus Feedback GUI will wait until you do it.
-- Run this command (you can make a shortcut to it):
+- Find the shortcut in the start menu or run this command (you can make a shortcut to it):
 
 
     python FocusFeedbackGUI/focusfeedbackgui
@@ -108,3 +114,19 @@ extension. This file contains metadata about the experiment and the parameters f
 ## Configuration
 The file 'conf.yml' contains configuration and calibration for the GUI. See the configuration file for more details.
 Some values can be changed by the gui and then saved by using the File>Save (As) menu.
+
+# Development
+## Requirements
+- Python 3.8, 3.9 or 3.10: https://www.python.org/
+- Rust: https://rustup.rs/
+- PyCharm: https://www.jetbrains.com/pycharm/
+- NSIS: https://nsis.sourceforge.io/Download/
+
+## Creating an installer
+    python -m venv venv
+    venv\Scripts\activate
+    pip install pyinstaller
+    pip install .
+    pyinstaller focusfeedbackgui.spec --clean --noconfirm
+
+- Open NSIS and click "Compile NSI scripts", then open focusfeedbackgui.nsi with it.
