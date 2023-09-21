@@ -11,3 +11,4 @@ TransformParameters.0.txt
 /FocusFeedbackGUI_setup.exe
 /focusfeedbackgui/functions_rs.pyd
 /Cargo.lock
+*.so

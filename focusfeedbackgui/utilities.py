@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 from PySide2 import QtCore
 from traceback import format_exc
-from tllab_common.wimread import imread
+from ndbioimage import Imread
 
 
 def yaml_load(f):
@@ -149,7 +149,7 @@ def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, for
         transform = True
 
     if os.path.exists(file):
-        with imread(file, transform=transform, beadfile=beadfiles) as im:
+        with Imread(file, transform=transform, beadfile=beadfiles) as im:
             if out is None:
                 out = file[:-4] + '_transformed.tif'
             out = os.path.abspath(out)
@@ -164,5 +164,5 @@ def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, for
 
 
 def info(file):
-    with imread(file) as im:
+    with Imread(file) as im:
         print(im.summary)

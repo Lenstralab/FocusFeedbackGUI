@@ -1,5 +1,4 @@
 import os
-import re
 import numpy as np
 import scipy
 import pandas
@@ -9,9 +8,9 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_pdf import PdfPages
 import skimage.filters
 from parfor import parfor
-from tllab_common.wimread import imread
 from focusfeedbackgui import functions as fn
 from focusfeedbackgui import utilities
+from ndbioimage import Imread
 
 
 warnings.filterwarnings('ignore', message='Starting a Matplotlib GUI outside of the main thread will likely fail.')
@@ -225,13 +224,12 @@ def detect_points(im, sigma, mask=None, footprint=15, filter=True):
 
 
 def localize(f, im, theta=None, fast_mode=False, progress=True):
-    frames = f['frame'].astype('int').tolist()
     sigma = [im.sigma[i] for i in range(int(f['C'].max()) + 1)]
 
-    @parfor(f.iterrows(), desc='Fitting localisations', length=len(frames), bar=progress)
+    @parfor(f.iterrows(), desc='Fitting localisations', length=len(f), bar=progress)
     def fun(row):
         h = row[1]
-        q, dq, r_squared = fn.fitgauss(im(int(h['frame'])), theta, sigma[int(h['C'])], fast_mode, True,
+        q, dq, r_squared = fn.fitgauss(im[int(h['C']), int(h['Z'])], theta, sigma[int(h['C'])], fast_mode, True,
                                        h[['x_ini', 'y_ini']].to_numpy())
 
         h['y_ini'] = h['y']
@@ -276,18 +274,18 @@ def group(it, n):
         yield it[n*i:n*i+n]
 
 
-def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=None, r2lim=None, path=None):
+def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=None, r2lim=None, path=None, theta=None):
     if elim is None:
         elim = 0.4, 2.5
     if r2lim is None:
         r2lim = 0.6, 0.75
     if path is None:
         path = os.path.splitext(file)[0]
-    with imread(file) as im, PdfPages(f'{path}_Cyllens_calib.pdf') as pdf:
+    with Imread(file, axes='czxy') as im, PdfPages(f'{path}_Cyllens_calib.pdf') as pdf:
         if em_lambdas is not None:
             if np.isscalar(em_lambdas):
-                em_lambdas = [em_lambdas] * im.shape[2]
-            im.sigma = [i / 2 / im.NA / im.pxsize / 1000 for i in em_lambdas]
+                em_lambdas = [em_lambdas] * im.shape['c']
+            im.sigma = [i / 2 / im.NA / im.pxsize_um / 1000 for i in em_lambdas]
         if cyllens is not None:
             im.cyllens = cyllens
         print(f'Using channels {channels}, sigma: {[im.sigma[channel] for channel in channels]} px')
@@ -296,7 +294,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         detections = []
         for channel in channels:
-            detected = detect_points(im.max(channel), im.sigma[channel])
+            detected = detect_points(im[channel].max('z'), im.sigma[channel])
             detected['C'] = channel
             detections.append(detected)
         detections = pandas.concat(detections, ignore_index=True)
@@ -307,50 +305,53 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         gs = GridSpec(3, 5, figure=fig)
 
         fig.add_subplot(gs[:2, :5])
-        plt.imshow(np.hstack([im.max(channel) for channel in channels]))
+        plt.imshow(np.hstack([im[channel].max('z') for channel in channels]))
         for i, channel in enumerate(channels):
             b = detections.query(f'C=={channel}')
-            plt.plot(b['x'] + i * im.shape[0], b['y'], 'or', markerfacecolor='none')
+            plt.plot(b['x'] + i * im.shape['y'], b['y'], 'or', markerfacecolor='none')
             for _, row in b.iterrows():
-                plt.text(row['x'] + i * im.shape[0], row['y'], f"{row['particle']:.0f}", color='w')
+                plt.text(row['x'] + i * im.shape['y'], row['y'], f"{row['particle']:.0f}", color='w')
 
         d = pandas.DataFrame()
 
-        zmax = np.round(15 / im.deltaz).astype('int')
-        zmax = min(zmax, im.shape[3])
+        zmax = np.round(15 / im.deltaz_um).astype('int')
+        zmax = min(zmax, im.shape['z'])
 
-        for T in range(im.shape[4]):
+        for T in range(im.shape['t']):
             for Z in range(zmax):
                 b = detections.copy()
                 b['Z'] = Z
                 b['T'] = T
-                b['z_um'] = Z * im.deltaz
-                b['frame'] = [im.czt2n(channel, Z, T) for channel in b['C']]
+                b['z_um'] = Z * im.deltaz_um
+                # b['frame'] = [im.czt2n(channel, Z, T) for channel in b['C']]
                 d = pandas.concat((d, b))
         d = d.reset_index(drop=True)
         if callable(progress):
             pr = Progress(len(d), progress)
         else:
             pr = True
-        detections = localize(d, im, theta=None, progress=pr)
-        if callable(progress):
-            pr.half = 1
-        b = detections.copy().dropna(subset=['theta']).query('R2>0.3')
+        if theta is None:
+            detections = localize(d, im, theta=None, progress=pr)
+            if callable(progress):
+                pr.half = 1
+            b = detections.copy().dropna(subset=['theta']).query('R2>0.3')
 
-        fig.add_subplot(gs[2, 1:4])
-        plt.hist((b['theta'] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100)
-        plt.xlabel('theta')
-        pdf.savefig(fig)
+            fig.add_subplot(gs[2, 1:4])
+            plt.hist((b['theta'] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100)
+            plt.xlabel('theta')
+            pdf.savefig(fig)
 
-        theta, dtheta = utilities.circ_weighted_mean(b['theta'], b['dtheta'], np.pi / 2)
-        print('θ = {} ± {}'.format(theta, dtheta))
+            theta, dtheta = utilities.circ_weighted_mean(b['theta'], b['dtheta'], np.pi / 2)
+            print('θ = {} ± {}'.format(theta, dtheta))
+        else:
+            dtheta = 0
 
         detections = localize(d, im, theta=theta, progress=pr)
         detections['particle'] = d['particle']
-        detections['s_um'] = detections['s'] * im.pxsize
-        detections['ds_um'] = detections['ds'] * im.pxsize
-        detections['dx_um'] = detections['dx'] * im.pxsize
-        detections['dy_um'] = detections['dy'] * im.pxsize
+        detections['s_um'] = detections['s'] * im.pxsize_um
+        detections['ds_um'] = detections['ds'] * im.pxsize_um
+        detections['dx_um'] = detections['dx'] * im.pxsize_um
+        detections['dy_um'] = detections['dy'] * im.pxsize_um
 
         # individual Zhuang fits
         n_columns = 3
@@ -413,7 +414,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         py = np.array(py)
         dpy = np.array(dpy)
 
-        g = detections.query(f'R2>{r2lim[1]} & 0.15<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
+        g = detections.query(f'R2>{r2lim[1]} & 0.1<s_um<0.6 & {elim[0]}<e<{elim[1]} & dx_um<0.2 & dy_um<0.2 & de<0.2'
                              ' & ds_um<0.2').copy()
         x = [g.query('particle=={}'.format(i))['x'].mean() for i in pr]
         y = [g.query('particle=={}'.format(i))['y'].mean() for i in pr]
@@ -540,19 +541,15 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         plt.tight_layout()
         pdf.savefig(fig)
 
-        r = re.search(r'(?<=\s)\d+x', im.objective)
-        if r:
-            m = r.group(0)
-        else:
-            m = ''
-
-        s = '{}{}{:.0f}:'.format(im.cyllens[channels[0]], m, im.optovar[0] * 10)
+        obj_mag = im.objective.nominal_magnification
+        tl_mag = im.tubelens.nominal_magnification
+        s = '{}{}{:.0f}:'.format(im.cyllens[channels[0]], obj_mag, tl_mag * 10)
         s += '\n  q: [{}, {}, {}, {}, {}, {}, {}, {}, {}]'.format(*q)
         s += '\n  theta: {}'.format(theta)
 
         print('To put in CylLensGUI config file:')
         print(s)
-        magnification_str = f'{im.magnification}x{10*im.optovar[0]:.0f}'
+        magnification_str = f'{obj_mag:.0f}x{10 * tl_mag:.0f}'
 
     return {'channels': channels, 'magnification_str': magnification_str, 'theta': theta, 'q': q,
             'detections': detections, 'filtered': filtered, 'Ze': Ze, 'E': E, 'z': z, 'sx': sx, 'sy': sy,
@@ -636,7 +633,7 @@ def error_plot(x, d):
     Z = np.linspace(-xlim, xlim)
     p = error_fit(x, d + x)
 
-    r = (2 * error_fun_pk(p[1]) / 3)[0]
+    r = np.clip((2 * error_fun_pk(p[1]) / 3)[0], None, 1/2)
     plt.plot(x, d, '.b', Z, -Z, '--g')
     plt.plot(Z, error_fun(Z, p) - Z, '-r', Z, np.zeros(np.shape(Z)), '--k')
     plt.plot(r, error_fun(r, p) - r, 'yo', -r, error_fun(-r, p) + r, 'yo')

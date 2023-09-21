@@ -10,9 +10,9 @@ path = "focusfeedbackgui/functions.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = { version = "0.18.1", features = ["extension-module", "abi3-py38", "generate-import-lib"] }
+pyo3 = { version = "0.19.1", features = ["extension-module", "abi3-py38", "generate-import-lib"] }
 ndarray = { version = "0.15.6", features = ["approx", "rayon"] }
-numpy = "0.18.0"
+numpy = "0.19.0"
 statrs = "0.16.0"
 
 [package.metadata.maturin]
