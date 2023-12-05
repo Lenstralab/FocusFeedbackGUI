@@ -35,7 +35,7 @@ Section
     # point the new shortcut at the program uninstaller
     createDirectory "$SMPROGRAMS\FocusFeedbackGUI"
     CreateShortcut "$SMPROGRAMS\FocusFeedbackGUI\FocusFeedbackGUI.lnk" "$INSTDIR\focusfeedbackgui\focusfeedbackgui.exe"
-    CreateShortcut "$SMPROGRAMS\FocusFeedbackGUI\configuration.lnk" "$INSTDIR\focusfeedbackgui\focusfeedbackgui\conf.yml"
+    CreateShortcut "$SMPROGRAMS\FocusFeedbackGUI\configuration.lnk" "$INSTDIR\focusfeedbackgui\_internal\focusfeedbackgui\conf.yml"
     CreateShortcut "$SMPROGRAMS\FocusFeedbackGUI\FocusFeedbackGUI Uninstall.lnk" "$INSTDIR\uninstall.exe"
 
     File /r "dist\focusfeedbackgui"

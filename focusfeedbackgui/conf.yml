@@ -9,7 +9,7 @@ fastMode: False  # if True: only fit using moment analysis for faster results; F
 gain: 5e-3  # gain for PID mode
 cyllenses: 300mm, 500mm  # names of available cylinder lenses
 duolinkFilterBlocks: ['488/_561_/640 & 488/_640_', '_561_/640 & empty']  # names of duolink filterblock pairs, with the pairs separated by an &
-cyllensLabels: ['Cylindrical lens front', 'Cylindrical lens back']  # how to label the two sliders for cylinder lenses
+cyllensLabels: ['Cylindrical lens back', 'Cylindrical lens front']  # how to label the two sliders for cylinder lenses
 
 # for each cylinderlens x objective magnification x optovar here is a calibration
 # q: calibrated Zhuang parameters

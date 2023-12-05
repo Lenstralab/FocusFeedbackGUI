@@ -44,6 +44,8 @@ class Cst(Enum):
 
 
 class Microscope(MicroscopeClass):
+    has_events = True
+
     def __init__(self, *args, event_handler=None, **kwargs):
         self.event_handler = event_handler
         self._zen_vba = {}

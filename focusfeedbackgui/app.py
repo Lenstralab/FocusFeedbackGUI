@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import threading
 import traceback
 import warnings
 from collections import deque
@@ -423,7 +424,7 @@ class App(UiMainWindow):
         self.microscope_class = self.conf.get('microscope', 'demo')
         self.microscope = MicroscopeClass(self.microscope_class)
 
-        if self.microscope.event_handler is None:
+        if not self.microscope.has_events:
             # the map is useless without event handler
             self.tabs.removeTab(2)
             self.center_on_click_box.setVisible(False)
@@ -967,6 +968,10 @@ class App(UiMainWindow):
         self.NS.quit = True
         self.fblprocess.join(5)
         self.fblprocess.terminate()
+        for i in range(50):  # wait up to 5 seconds for all threads to stop
+            if all([not thread.is_alive() for thread in threading.enumerate()]):
+                break
+            sleep(0.1)
 
 
 def main():

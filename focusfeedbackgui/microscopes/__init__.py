@@ -25,6 +25,7 @@ class MicroscopeClass(metaclass=ABCMeta):
     duolink_filter = 1
     time = 0
     is_experiment_running = False
+    has_events = False
 
     def __new__(cls, microscope=None, *args, **kwargs):
         if microscope is None:

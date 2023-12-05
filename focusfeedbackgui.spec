@@ -14,7 +14,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[(path / 'stylesheet.qss', 'focusfeedbackgui'), (path / 'conf.yml', 'focusfeedbackgui')],
-    hiddenimports=collect_submodules('focusfeedbackgui'),
+    hiddenimports=(collect_submodules('focusfeedbackgui') +
+                   collect_submodules('xsdata_pydantic_basemodel.hooks') +
+                   collect_submodules('ndbioimage.readers')),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
