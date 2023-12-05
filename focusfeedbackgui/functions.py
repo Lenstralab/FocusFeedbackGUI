@@ -1,12 +1,13 @@
+import os
+from glob import glob
+from time import time
+
 import numpy as np
+import scipy.ndimage
 import scipy.optimize
 import scipy.special
-import scipy.ndimage
-import os
-from time import time
-from glob import glob
-from .functions_rs import *
 
+from .functions_rs import *
 
 np.seterr(invalid='ignore')
 

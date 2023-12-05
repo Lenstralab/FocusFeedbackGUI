@@ -1,17 +1,18 @@
 import os
-import numpy as np
-import scipy
-import pandas
 import warnings
+
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+import pandas
+import scipy
 import skimage.filters
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.gridspec import GridSpec
+from ndbioimage import Imread
 from parfor import parfor
+
 from focusfeedbackgui import functions as fn
 from focusfeedbackgui import utilities
-from ndbioimage import Imread
-
 
 warnings.filterwarnings('ignore', message='Starting a Matplotlib GUI outside of the main thread will likely fail.')
 A4 = (8.27, 11.69)
@@ -110,7 +111,7 @@ def zhuang_fun(z, p):
 
 
 def fit_zhuang_int(z, s):
-    p = np.zeros((5, 1))
+    p = np.zeros((5,))
     p[0] = np.nanmin(s)
     p[3] = z[np.nanargmin(s)]
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -159,6 +160,7 @@ def detect_points(im, sigma, mask=None, footprint=15, filter=True):
         wp@tl201908
     """
     dim = np.ndim(im)
+    im = im.astype(float)
 
     if sigma > 0:
         c = scipy.ndimage.gaussian_laplace(im, sigma)
@@ -217,9 +219,9 @@ def detect_points(im, sigma, mask=None, footprint=15, filter=True):
 
     if filter:
         f = f.dropna()
-        if len(f) > 2:
+        if len(f) > 100:
             th = skimage.filters.threshold_otsu(f['i_ini'].to_numpy())
-            f = f.query('i_ini>{}'.format(th))
+            f = f.nlargest(100, 'i_ini') if len(g := f.query('i_ini>{}'.format(th))) < 100 else g
     return f
 
 
@@ -305,7 +307,8 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         gs = GridSpec(3, 5, figure=fig)
 
         fig.add_subplot(gs[:2, :5])
-        plt.imshow(np.hstack([im[channel].max('z') for channel in channels]))
+        im = np.hstack([im[channel].max('z') for channel in channels])
+        plt.imshow(im, vmax=np.percentile(im, 99))
         for i, channel in enumerate(channels):
             b = detections.query(f'C=={channel}')
             plt.plot(b['x'] + i * im.shape['y'], b['y'], 'or', markerfacecolor='none')
@@ -543,7 +546,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         obj_mag = im.objective.nominal_magnification
         tl_mag = im.tubelens.nominal_magnification
-        s = '{}{}{:.0f}:'.format(im.cyllens[channels[0]], obj_mag, tl_mag * 10)
+        s = f'[cyllens_name]{obj_mag:.0f}x{10 * tl_mag:.0f}:'
         s += '\n  q: [{}, {}, {}, {}, {}, {}, {}, {}, {}]'.format(*q)
         s += '\n  theta: {}'.format(theta)
 

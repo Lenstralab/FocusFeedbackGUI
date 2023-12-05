@@ -1,9 +1,10 @@
-import numpy as np
-from re import search
 from abc import ABCMeta
-from warnings import warn
-from traceback import format_exc
 from importlib import import_module
+from re import search
+from traceback import format_exc
+from warnings import warn
+
+import numpy as np
 
 
 class MicroscopeClass(metaclass=ABCMeta):
@@ -14,7 +15,7 @@ class MicroscopeClass(metaclass=ABCMeta):
     optovar_magnification = 1.6
     objective_na = 1.57
     pxsize = 97.07
-    time_interval = 1
+    time_interval = 0.1
     filename = ''
     channel_colors_int = 255, 65280
     channel_names = 'TV1', 'TV2'
@@ -25,7 +26,9 @@ class MicroscopeClass(metaclass=ABCMeta):
     time = 0
     is_experiment_running = False
 
-    def __new__(cls, microscope, *args, **kwargs):
+    def __new__(cls, microscope=None, *args, **kwargs):
+        if microscope is None:
+            microscope = cls
         if isinstance(microscope, type) and issubclass(microscope, MicroscopeClass):
             microscope_subclass = microscope
         else:
@@ -117,6 +120,10 @@ class MicroscopeClass(metaclass=ABCMeta):
         """ Return a part of the current frame in channel channel. """
         return np.zeros((width, height))
 
+    @staticmethod
+    def color_int_to_rgb255(color):
+        h = hex(color)[2:].rjust(6, '0')
+        return int(h[4:6], 16), int(h[2:4], 16), int(h[:2], 16)
 
 class Demo(MicroscopeClass):
     pass

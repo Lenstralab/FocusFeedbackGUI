@@ -2,9 +2,10 @@
 
 from argparse import ArgumentParser
 from multiprocessing import freeze_support
+
 from focusfeedbackgui import app
 from focusfeedbackgui.cylinderlens import calibrate_z
-from focusfeedbackgui.utilities import warp, info
+from focusfeedbackgui.utilities import info, warp
 
 
 def main():

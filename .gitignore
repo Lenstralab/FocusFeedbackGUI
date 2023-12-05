@@ -12,3 +12,5 @@ TransformParameters.0.txt
 /focusfeedbackgui/functions_rs.pyd
 /Cargo.lock
 *.so
+# ask Zeiss for a license for Zen Blue
+/focusfeedbackgui/microscopes/zen_blue.py

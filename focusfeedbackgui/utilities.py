@@ -1,11 +1,12 @@
-import yaml
-import re
 import os
+import re
 import warnings
-import numpy as np
-from PySide2 import QtCore
 from traceback import format_exc
+
+import numpy as np
+import yaml
 from ndbioimage import Imread
+from PySide2 import QtCore
 
 
 def yaml_load(f):
@@ -142,14 +143,14 @@ def find_range(x, s):
 
 def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, force=True, transform_files=None):
     if transform_files is not None and transform_files[0].endswith('.yml'):
-        beadfiles = None
+        bead_files = None
         transform = transform_files[0]
     else:
-        beadfiles = transform_files
-        transform = True
+        bead_files = transform_files
+        transform = None
 
     if os.path.exists(file):
-        with Imread(file, transform=transform, beadfile=beadfiles) as im:
+        with Imread(file).with_transform(file=transform, bead_files=bead_files) as im:
             if out is None:
                 out = file[:-4] + '_transformed.tif'
             out = os.path.abspath(out)

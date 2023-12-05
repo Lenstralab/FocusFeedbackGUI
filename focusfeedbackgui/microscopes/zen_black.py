@@ -1,16 +1,16 @@
-import win32com.client
-import pythoncom
-import numpy as np
-from re import search
-from time import sleep
-from threading import get_ident
-from functools import partial
-from enum import Enum
 from collections import OrderedDict
-from PySide2 import QtCore
-from focusfeedbackgui.utilities import QThread, error_wrap
-from focusfeedbackgui.microscopes import MicroscopeClass
+from enum import Enum
+from functools import partial
+from re import search
+from threading import get_ident
+from time import sleep
 
+import numpy as np
+import pythoncom
+import win32com.client
+from focusfeedbackgui.microscopes import MicroscopeClass
+from focusfeedbackgui.utilities import QThread, error_wrap
+from PySide2 import QtCore
 
 # global property to keep track of indices of drawings in ZEN across threads
 drawing_list = []

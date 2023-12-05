@@ -1,12 +1,14 @@
-from PySide2.QtWidgets import *
 import warnings
-import numpy as np
 from traceback import format_exc
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from matplotlib import rcParams, pyplot
-from focusfeedbackgui.utilities import error_wrap
 
+import numpy as np
+from matplotlib import pyplot, rcParams
+from matplotlib.backends.backend_qt5agg import \
+    FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from PySide2.QtWidgets import *
+
+from focusfeedbackgui.utilities import error_wrap
 
 rcParams.update({'figure.autolayout': True})
 np.seterr(all='ignore')

@@ -1,25 +1,26 @@
 import os
-import sys
-import yaml
 import re
-import warnings
+import sys
 import traceback
-import numpy as np
-from shutil import copyfile
-from time import sleep, time
+import warnings
+from collections import deque
 from datetime import datetime
 from functools import partial
-from multiprocessing import Process, Queue, Manager
-from collections import deque
-from PySide2.QtWidgets import *
+from multiprocessing import Manager, Process, Queue
+from shutil import copyfile
+from time import sleep, time
+
+import numpy as np
+import yaml
 from PySide2 import QtCore
+from PySide2.QtWidgets import *
+
 from focusfeedbackgui import QGui
 from focusfeedbackgui import cylinderlens as cyl
 from focusfeedbackgui import functions
-from focusfeedbackgui.utilities import QThread, yaml_load, warp
-from focusfeedbackgui.pid import Pid
 from focusfeedbackgui.microscopes import MicroscopeClass
-
+from focusfeedbackgui.pid import Pid
+from focusfeedbackgui.utilities import QThread, warp, yaml_load
 
 np.seterr(all='ignore')
 
@@ -125,7 +126,7 @@ def feedbackloop(queue, ns, microscope):
                 # Wait for next frame:
                 while microscope.time - 1 == time_n_now and microscope.is_experiment_running and not ns.stop \
                         and not ns.quit:
-                    sleep(time_interval / 4)
+                    sleep(min(1, time_interval) / 4)
                 if time_n_now < time_n_prev:
                     break
 
@@ -256,14 +257,19 @@ class UiMainWindow(QMainWindow):
         conf_grid.addWidget(self.mult_channel_mode_drp, r, 1)
 
         r += 1
+        self.cyllens_labels = []
         self.cyllens_drp = []
-        conf_grid.addWidget(QLabel('Cylindrical lens back:'), r, 0)
+        label = QLabel('Cylindrical lens 1:')
+        self.cyllens_labels.append(label)
+        conf_grid.addWidget(label, r, 0)
         self.cyllens_drp.append(QComboBox())
         self.cyllens_drp[-1].addItems(['None', 'A', 'B'])
         conf_grid.addWidget(self.cyllens_drp[-1], r, 1)
 
         r += 1
-        conf_grid.addWidget(QLabel('Cylindrical lens front:'), r, 0)
+        label = QLabel('Cylindrical lens 2:')
+        self.cyllens_labels.append(label)
+        conf_grid.addWidget(label, r, 0)
         self.cyllens_drp.append(QComboBox())
         self.cyllens_drp[-1].addItems(['None', 'A', 'B'])
         self.cyllens_drp[-1].setCurrentIndex(1)
@@ -417,6 +423,24 @@ class App(UiMainWindow):
         self.microscope_class = self.conf.get('microscope', 'demo')
         self.microscope = MicroscopeClass(self.microscope_class)
 
+        if self.microscope.event_handler is None:
+            # the map is useless without event handler
+            self.tabs.removeTab(2)
+            self.center_on_click_box.setVisible(False)
+
+            def fun():
+                settings = (self.microscope.channel_colors_int, self.microscope.channel_names,
+                            self.microscope.duolink_filter)
+                while not self.stop and not self.quit:
+                    sleep(2.5)
+                    new_settings = (self.microscope.channel_colors_int, self.microscope.channel_names,
+                                    self.microscope.duolink_filter)
+                    if new_settings != settings:
+                        self.refresh()
+                        settings = new_settings
+
+            self.refresh_thread = QThread(fun)
+
         self.calibrating = False
         self.ellipse = {}
         self.rectangle = None
@@ -436,7 +460,7 @@ class App(UiMainWindow):
         self.max_step_fld.textChanged.connect(self.change_max_step)
         self.calibrate_btn.clicked.connect(self.calibrate)
         self.calibrate_action.triggered.connect(self.calibrate)
-        self.warp_btn.clicked.connect(self.warp)
+        self.warp_btn.clicked.connect(self.warp_using_file)
         self.reset_map_btn.clicked.connect(self.reset_map)
         self.channels_box.connect(self.change_channel, self.change_wavelength)
         self.feedback_mode_rdb.connect(self.change_feedback_mode)
@@ -453,6 +477,12 @@ class App(UiMainWindow):
         self.guithread = None
 
         self.microscope.wait(self, self.microscope_ready)
+
+    def refresh(self, *args, **kwargs):
+        self.change_color()
+        self.duolink_filter_lbl.setText(
+            self.duolink_block_drp.currentText().split(' & ')[self.microscope.duolink_filter])
+        self.duolink_filter_rdb.changeState(self.microscope.duolink_filter)
 
     def excepthook(self, *args, **kwargs):
         try:
@@ -522,7 +552,7 @@ class App(UiMainWindow):
                     if cn in self.splot:
                         self.splot.plt[cn].set_color(color)
         camera = {name: self.microscope.get_camera(name) for name in self.microscope.channel_names}
-        enabled = [False if self.NS.cyllens[c] == 'None' else True for c in camera.values()]
+        enabled = [False if self.NS.cyllens[c % len(self.NS.cyllens)] == 'None' else True for c in camera.values()]
         self.channels_box.changeOptions(camera.keys(), self.microscope.channel_colors_hex, enabled)
 
     def change_wavelength(self, channel, val):
@@ -550,7 +580,6 @@ class App(UiMainWindow):
             file, _ = QFileDialog.getOpenFileName(self, 'Beads for calibration', '',
                                                   'Carl Zeiss Image files (*.czi);;All files (*)', options=options)
             if file:
-
                 self.calibz_thread = QThread(cyl.calibrate_z, self.calibrate_done, file,
                                              self.channels_box.textBoxValues, self.NS.channels[:1], self.NS.cyllens,
                                              self.calibrate_progress)
@@ -625,7 +654,7 @@ class App(UiMainWindow):
             self.conf['ROISize'] = self.NS.roi_size
             self.conf['ROIPos'] = self.NS.roi_pos
             with open(f, 'w') as h:
-                yaml.dump(self.conf, h, default_flow_style=None)
+                yaml.dump(self.conf, h, default_flow_style=None, sort_keys=False)
 
     def conf_open(self, f):
         if not os.path.isfile(f):
@@ -670,6 +699,11 @@ class App(UiMainWindow):
             self.roi_pos_fld.setText(f'{self.NS.roi_pos}')
             self.NS.gain = self.conf.get('gain', 5e-3)
             self.NS.fast_mode = self.conf.get('fastMode', False)
+            self.duolink_block_drp.clear()
+            self.duolink_block_drp.addItems(self.conf.get('duolinkFilterBlocks', ['NA']))
+            if self.conf.get('cyllensLabels') is not None:
+                for label, text in zip(self.cyllens_labels, self.conf.get('cyllensLabels')):
+                    label.setText(f'{text}:')
 
     def change_duolink_filter(self, val):
         if val == '1':
@@ -698,8 +732,11 @@ class App(UiMainWindow):
             self.calibrate_btn.setEnabled(len(self.NS.channels) == 1)
 
     def change_duolink_block(self, *args):
-        self.duolink_filter_lbl.setText(
-            self.duolink_block_drp.currentText().split(' & ')[self.microscope.duolink_filter])
+        try:
+            self.duolink_filter_lbl.setText(
+                self.duolink_block_drp.currentText().split('&')[self.microscope.duolink_filter].strip())
+        except IndexError:
+            pass
 
     def change_feedback_mode(self, val):
         self.NS.feedback_mode = val.lower()
@@ -720,7 +757,7 @@ class App(UiMainWindow):
         return self.get_cyllens(channel) + self.microscope.magnification_str
 
     def prime(self):
-        if self.guithread is None or not self.guithread.is_alive():
+        if self.guithread is None or not self.guithread.is_alive:
             self.NS.stop = False
             self.guithread = QThread(target=self.run)
 
@@ -749,19 +786,23 @@ class App(UiMainWindow):
                                               self.NS.roi_size), index=self.rectangle)
                 sleep(sleep_time)
 
-            for channel in self.NS.channels:
+            channel_colors_rgb = self.microscope.channel_colors_rgb
+            channels = self.NS.channels
+            channel_colors_rgb = [channel_colors_rgb[channel] if len(channel_colors_rgb) > channel else [1, 1, 1]
+                                  for channel in channels]
+            for channel, color in zip(channels, channel_colors_rgb):
                 for tb in ('top', 'bottom'):
                     cn = '{}{}'.format(tb, channel)
                     if cn not in self.splot:
-                        self.splot.append_plot(cn, ':', self.microscope.channel_colors_rgb[channel])
+                        self.splot.append_plot(cn, ':', color)
 
                 for plot in (self.eplot, self.iplot, self.splot, self.rplot, self.pplot):
                     if channel not in plot:
-                        plot.append_plot(channel, '-', self.microscope.channel_colors_rgb[channel])
+                        plot.append_plot(channel, '-', color)
 
                 for plot in (self.xyplot, self.xzplot, self.yzplot):
                     if channel not in plot:
-                        plot.append_plot(channel, '.', self.microscope.channel_colors_rgb[channel])
+                        plot.append_plot(channel, '.', color)
 
             # Experiment has started:
             self.NS.run = True

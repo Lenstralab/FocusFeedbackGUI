@@ -1,7 +1,8 @@
 ![cyllensgui icon](Icon.ico)
 
 # Focus Feedback GUI
-Gui to live track single particles. Written for Zeiss' Zen Black software.
+Gui to live track single particles. Written for Zeiss' Zen Black software. A version working with Zeiss' Zen Blue will
+be available from Zeiss soon.
 
 # Installation
 ## With installer
@@ -38,7 +39,7 @@ feedback, which are grayed out at the moment.
 started in ZEN, the GUI will start tracking.
 - Center on click: When this is enabled, it is possible to click anywhere in the image in ZEN, and the GUI will instruct
 ZEN to center the sample on that position.
-- Prime for experiment: When this is clicked, the GUI will be ready and waiting for a new time lapse experiment to
+- Prime for experiment: When this is clicked, the GUI will be ready and waiting for a new time-lapse experiment to
 start, in contrast to the 'Stay primed option', this will not make the GUI to be ready and waiting after one experiment.
 - Stop: stop running feedback.
 - Zhuang / PID: Use Zhuang or PID feedback mode. Zhuang mode is more accurate and faster, but requires calibration.
@@ -126,6 +127,7 @@ Some values can be changed by the gui and then saved by using the File>Save (As)
     python -m venv venv
     venv\Scripts\activate
     pip install pyinstaller
+    # do not use pip install -e . as it will compile the Rust code in slow debug mode
     pip install .
     pyinstaller focusfeedbackgui.spec --clean --noconfirm
 
