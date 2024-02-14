@@ -118,7 +118,7 @@ Some values can be changed by the gui and then saved by using the File>Save (As)
 
 # Development
 ## Requirements
-- Python 3.8, 3.9 or 3.10: https://www.python.org/
+- Python 3.8, 3.9, 3.10, 3.11 or 3.12: https://www.python.org/
 - Rust: https://rustup.rs/
 - PyCharm: https://www.jetbrains.com/pycharm/
 - NSIS: https://nsis.sourceforge.io/Download/

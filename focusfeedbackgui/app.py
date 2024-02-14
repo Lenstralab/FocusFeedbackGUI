@@ -13,8 +13,9 @@ from time import sleep, time
 
 import numpy as np
 import yaml
-from PySide2 import QtCore
-from PySide2.QtWidgets import *
+from PySide6 import QtCore
+from PySide6.QtGui import QAction, QGuiApplication
+from PySide6.QtWidgets import *
 
 from focusfeedbackgui import QGui
 from focusfeedbackgui import cylinderlens as cyl
@@ -141,11 +142,11 @@ def feedbackloop(queue, ns, microscope):
 class UiMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        screen = QDesktopWidget().screenGeometry()
+        screen = QGuiApplication.primaryScreen()
         self.title = 'Cylinder lens feedback GUI'
         self.width = 640
         self.height = 1024
-        self.right = screen.width() - self.width
+        self.right = screen.size().width() - self.width
         self.top = 32
 
         with open(os.path.join(os.path.dirname(__file__), 'stylesheet.qss')) as style_sheet:
@@ -977,7 +978,7 @@ class App(UiMainWindow):
 def main():
     app = QApplication([])
     window = App()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':

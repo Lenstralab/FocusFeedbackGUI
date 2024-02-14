@@ -3,10 +3,9 @@ from traceback import format_exc
 
 import numpy as np
 from matplotlib import pyplot, rcParams
-from matplotlib.backends.backend_qt5agg import \
-    FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide2.QtWidgets import *
+from PySide6.QtWidgets import *
 
 from focusfeedbackgui.utilities import error_wrap
 
