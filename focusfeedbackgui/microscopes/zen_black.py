@@ -8,9 +8,14 @@ from time import sleep
 import numpy as np
 import pythoncom
 import win32com.client
+
 from focusfeedbackgui.microscopes import MicroscopeClass
 from focusfeedbackgui.utilities import QThread, error_wrap
-from PySide6 import QtCore
+
+try:
+    from PySide6 import QtCore
+except ImportError:
+    from PySide2 import QtCore
 
 # global property to keep track of indices of drawings in ZEN across threads
 drawing_list = []

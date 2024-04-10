@@ -3,9 +3,14 @@ from traceback import format_exc
 
 import numpy as np
 from matplotlib import pyplot, rcParams
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide6.QtWidgets import *
+
+try:
+    from PySide6.QtWidgets import *  # isort: skip
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas  # isort: skip
+except ImportError:
+    from PySide2.QtWidgets import *
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 from focusfeedbackgui.utilities import error_wrap
 

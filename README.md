@@ -11,12 +11,24 @@ be available from Zeiss soon.
 Start Menu > FocusFeedbackGUI/configuration and edit the file
 
 ## From source
-- Install Python 3.8, 3.9 or 3.10: https://www.python.org/
+- Install Python 3.8 or later: https://www.python.org/
 - Install Rust: https://rustup.rs/
 - Install using pip:
 
 
     pip install git+https://github.com/Lenstralab/FocusFeedbackGUI.git
+
+Note: For Python 3.11 and up PySide6 will be used and for Python3.8 PySide2 will be used. If you're using Python 3.9 or
+3.10, you need to choose for PySide2 or PySide6 and install it yourself. Some older versions of Windows are not
+supported by PySide6, limiting the Python version you can use to Python 3.10 or earlier.
+  
+    pip install PySide6
+
+or
+
+
+    pip install PySide2
+  
 
 - Configure:
 Edit C:\Program Files\Python3x\Lib\site-packages\focusfeedbackgui\conf.yml

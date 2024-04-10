@@ -6,7 +6,11 @@ from traceback import format_exc
 import numpy as np
 import yaml
 from ndbioimage import Imread
-from PySide6 import QtCore
+
+try:
+    from PySide6 import QtCore
+except ImportError:
+    from PySide2 import QtCore
 
 
 def yaml_load(f):

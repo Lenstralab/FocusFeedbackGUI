@@ -1,29 +1,44 @@
-[project]
+[tool.poetry]
 name = "focusfeedbackgui"
-version = "2024.2.0"
+version = "2024.4.0"
 description = "Live track particles."
+authors = ["Wim Pomp, Lenstra lab NKI <w.pomp@nki.nl>"]
+license = "GPLv3"
 readme = "README.md"
-authors = [{ name = "Wim Pomp @ Lenstra lab NKI", email = "w.pomp@nki.nl" }]
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Operating System :: OS Independent",
-]
 keywords = ["microscopy", "focus", "feedback"]
-dependencies = ["numpy>=1.16.5", "scipy", "matplotlib", "parfor>=2021.7.1", "scikit-image>=0.18.0", "pandas",
-    "pyside6", "pyyaml", "pywin32; platform_system==\"Windows\"", "ndbioimage>=2023.12.2"]
+include = ["conf.yml", "stylesheet.qss"]
+repository = "https://github.com/Lenstralab/FocusFeedbackGUI"
 
-[project.scripts]
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = ">=1.16.5"
+scipy = "*"
+matplotlib = "*"
+parfor = ">=2024.3.0"
+scikit-image = ">=0.18.0"
+pandas = ">=2.0.0"
+pyside2 = [{ version = "*", python = "<3.9" },  # for python 3.9 and 3.10 pyside2 or pyside6 can be selected
+           { version = "*", python = ">=3.9", optional = true }
+]
+pyside6 = [{ version = "*", python = "<3.11", optional = true },
+           { version = "*", python = ">=3.11" }
+]
+pyyaml = "*"
+pywin32 = { version = "*", markers = "sys_platform == 'win32'" }
+ndbioimage = ">=2024.4.4"
+focusfeedbackgui_rs = { path = "focusfeedbackgui_rs" }
+
+[tool.poetry.extras]
+dev = ["pytest", "pytest-order"]
+pyside2 = ["pyside2"]
+pyside6 = ["pyside6"]
+
+[tool.poetry.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"
 
-[tool.maturin]
-include = [
-    { path = "conf.yml", format = "sdist" },
-    { path = "stylesheet.qss", format = "sdist" }
-]
-module-name = "focusfeedbackgui.functions_rs"
+[tool.isort]
+line_length = 119
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

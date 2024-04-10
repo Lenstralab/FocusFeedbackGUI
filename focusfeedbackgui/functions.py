@@ -7,7 +7,7 @@ import scipy.ndimage
 import scipy.optimize
 import scipy.special
 
-from .functions_rs import *
+from focusfeedbackgui_rs.functions import *
 
 np.seterr(invalid='ignore')
 

@@ -1,12 +1,12 @@
 [package]
-name = "functions_rs"
+name = "focusfeedbackgui_rs"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "functions_rs"
-path = "focusfeedbackgui/functions.rs"
+name = "focusfeedbackgui_rs"
+path = "focusfeedbackgui_rs/functions.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
@@ -16,4 +16,4 @@ numpy = "0.19.0"
 statrs = "0.16.0"
 
 [package.metadata.maturin]
-name = "focusfeedbackgui.functions_rs"
+name = "focusfeedbackgui_rs.functions"

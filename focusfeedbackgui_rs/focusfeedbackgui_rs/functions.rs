@@ -3,7 +3,7 @@ use numpy::{IntoPyArray, PyReadonlyArray1, PyReadonlyArray2, PyArray2};
 
 
 #[pymodule]
-fn functions_rs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn functions(_py: Python, m: &PyModule) -> PyResult<()> {
     #[pyfn(m)]
     fn meshgrid<'py>(
         py: Python<'py>,

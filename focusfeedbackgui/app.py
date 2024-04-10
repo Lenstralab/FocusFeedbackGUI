@@ -13,9 +13,6 @@ from time import sleep, time
 
 import numpy as np
 import yaml
-from PySide6 import QtCore
-from PySide6.QtGui import QAction, QGuiApplication
-from PySide6.QtWidgets import *
 
 from focusfeedbackgui import QGui
 from focusfeedbackgui import cylinderlens as cyl
@@ -23,6 +20,17 @@ from focusfeedbackgui import functions
 from focusfeedbackgui.microscopes import MicroscopeClass
 from focusfeedbackgui.pid import Pid
 from focusfeedbackgui.utilities import QThread, warp, yaml_load
+
+try:
+    from PySide6 import QtCore
+    from PySide6.QtGui import QAction, QGuiApplication
+    from PySide6.QtWidgets import *
+    pyside = 6
+except ImportError:
+    from PySide2 import QtCore
+    from PySide2.QtWidgets import *
+    pyside = 2
+
 
 np.seterr(all='ignore')
 
@@ -142,11 +150,14 @@ def feedbackloop(queue, ns, microscope):
 class UiMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        screen = QGuiApplication.primaryScreen()
+        if pyside == 6:
+            screen_size = QGuiApplication.primaryScreen().size()
+        else:
+            screen_size = QDesktopWidget().screenGeometry()
         self.title = 'Cylinder lens feedback GUI'
         self.width = 640
         self.height = 1024
-        self.right = screen.size().width() - self.width
+        self.right = screen_size.width() - self.width
         self.top = 32
 
         with open(os.path.join(os.path.dirname(__file__), 'stylesheet.qss')) as style_sheet:
@@ -978,7 +989,10 @@ class App(UiMainWindow):
 def main():
     app = QApplication([])
     window = App()
-    sys.exit(app.exec())
+    if pyside == 6:
+        sys.exit(app.exec())
+    else:
+        sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
