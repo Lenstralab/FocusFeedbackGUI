@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "focusfeedbackgui"
-version = "2024.4.0"
+version = "2024.7.0"
 description = "Live track particles."
 authors = ["Wim Pomp, Lenstra lab NKI <w.pomp@nki.nl>"]
 license = "GPLv3"
