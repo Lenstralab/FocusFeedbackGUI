@@ -149,6 +149,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FocusFeedbackGUI_setup.exe
+          path: .
 
   release:
     runs-on: ubuntu-latest
