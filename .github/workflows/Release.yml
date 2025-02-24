@@ -133,6 +133,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: The new tag
+        id: computed-tag
+        run: |
+          set -e
+          TAG=$(cat Cargo.toml \
+          | grep --extended-regexp "^version =" \
+          | grep --extended-regexp --only-matching "[0-9]+\.[0-9]+.[0-9]+[-\.\+a-zA-Z0-9]*" \
+          | head --lines=1)
+          echo "tag=v$TAG" >> "$GITHUB_OUTPUT"
+      - name: Tagging repo using version specified in Cargo.toml
+        uses: djordon/git-autotag-action@v0.7.0-beta1
+        with:
+          tag: ${{ steps.computed-tag.outputs.tag }}
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
