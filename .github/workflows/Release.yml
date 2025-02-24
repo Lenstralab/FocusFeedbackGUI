@@ -126,6 +126,11 @@ jobs:
         uses: joncloud/makensis-action@v4.1
         with:
           script-file: focusfeedbackgui.nsi
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FocusFeedbackGUI_setup.exe
+          path: installers
 
   release:
     runs-on: ubuntu-latest
@@ -155,4 +160,4 @@ jobs:
         with:
           files: |
             dist/*
-            FocusFeedbackGUI_setup.exe
+            installers/*
