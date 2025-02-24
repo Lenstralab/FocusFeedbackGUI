@@ -14,14 +14,14 @@ python = "^3.8"
 numpy = ">=1.16.5"
 scipy = "*"
 matplotlib = "*"
-parfor = ">=2024.3.0"
+parfor = ">=2025.1.0"
 scikit-image = ">=0.18.0"
 pandas = ">=2.0.0"
-pyside2 = [{ version = "*", python = "<3.9" },  # for python 3.9 and 3.10 pyside2 or pyside6 can be selected
-           { version = "*", python = ">=3.9", optional = true }
+pyside2 = [
+    { version = "*", python = "<3.9" },  # for python 3.9 and 3.10 pyside2 or pyside6 can be selected
 ]
-pyside6 = [{ version = "*", python = "<3.11", optional = true },
-           { version = "*", python = ">=3.11" }
+pyside6 = [
+    { version = "*", python = ">=3.11" },
 ]
 pyyaml = "*"
 pywin32 = { version = "*", markers = "sys_platform == 'win32'" }
@@ -30,8 +30,8 @@ focusfeedbackgui_rs = { path = "focusfeedbackgui_rs" }
 
 [tool.poetry.extras]
 dev = ["pytest", "pytest-order"]
-pyside2 = ["pyside2"]
-pyside6 = ["pyside6"]
+#pyside2 = ["pyside2"]
+#pyside6 = ["pyside6"]
 
 [tool.poetry.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"

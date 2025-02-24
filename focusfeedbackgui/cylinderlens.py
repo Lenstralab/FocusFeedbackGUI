@@ -145,7 +145,7 @@ def fit_zhuang(z, s, ds, rec=True):
         chi_squared = r.fun / (z.size - p.size)
         r_squared = 1 - np.nansum((s - zhuang_fun(z, q)) ** 2) / np.sum((s - np.mean(s)) ** 2)
     if rec and np.isnan(zhuang_fun(0, q.T)):
-        return fit_zhuang(z, s, 1, False)
+        return fit_zhuang(z, s, np.ones_like(s), False)
     return q.T, dq.T, (chi_squared, r_squared)
 
 

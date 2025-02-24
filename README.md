@@ -128,9 +128,13 @@ extension. This file contains metadata about the experiment and the parameters f
 The file 'conf.yml' contains configuration and calibration for the GUI. See the configuration file for more details.
 Some values can be changed by the gui and then saved by using the File>Save (As) menu.
 
+## Example files
+A bead file and a tracking example file can be downloaded from here:
+https://surfdrive.surf.nl/files/index.php/s/BSsuGbRJ4EaQzgL.
+
 # Development
 ## Requirements
-- Python 3.8, 3.9, 3.10, 3.11 or 3.12: https://www.python.org/
+- Python 3.8 or higher: https://www.python.org/
 - Rust: https://rustup.rs/
 - PyCharm: https://www.jetbrains.com/pycharm/
 - NSIS: https://nsis.sourceforge.io/Download/

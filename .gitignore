@@ -16,3 +16,9 @@ TransformParameters.0.txt
 /focusfeedbackgui/microscopes/zen_blue.py
 /focusfeedbackgui_rs/target/
 /focusfeedbackgui_rs/Cargo.lock
+._*
+*.czi
+*.log
+*.nii
+*sync-conflict*
+*.pzl
