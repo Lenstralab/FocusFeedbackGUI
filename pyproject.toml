@@ -1,44 +1,61 @@
-[tool.poetry]
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
 name = "focusfeedbackgui"
-version = "2024.7.0"
+dynamic = ["version"]
 description = "Live track particles."
-authors = ["Wim Pomp, Lenstra lab NKI <w.pomp@nki.nl>"]
-license = "GPLv3"
+authors = [
+    { name = "Wim Pomp", email = "w.pomp@nki.nl" }
+]
+license = "GPL-3.0-or-later"
 readme = "README.md"
 keywords = ["microscopy", "focus", "feedback"]
 include = ["conf.yml", "stylesheet.qss"]
+requires-python = ">=3.8"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "matplotlib",
+    "ndbioimage>=2025.2.1",
+    "numpy>=1.16.5",
+    "pandas>=2.0.0",
+    "parfor>=2025.1.0",
+    "pyside2; python_version<'3.9'",
+    "pyside6; python_version>'3.10'",
+    "pyyaml",
+    "pywin32; sys_platform=='win32'",
+    "scikit-image>=0.18.0",
+    "scipy",
+]
+
+[project.urls]
 repository = "https://github.com/Lenstralab/FocusFeedbackGUI"
 
-[tool.poetry.dependencies]
-python = "^3.8"
-numpy = ">=1.16.5"
-scipy = "*"
-matplotlib = "*"
-parfor = ">=2025.1.0"
-scikit-image = ">=0.18.0"
-pandas = ">=2.0.0"
-pyside2 = [
-    { version = "*", python = "<3.9" },  # for python 3.9 and 3.10 pyside2 or pyside6 can be selected
-]
-pyside6 = [
-    { version = "*", python = ">=3.11" },
-]
-pyyaml = "*"
-pywin32 = { version = "*", markers = "sys_platform == 'win32'" }
-ndbioimage = ">=2024.4.4"
-focusfeedbackgui_rs = { path = "focusfeedbackgui_rs" }
-
-[tool.poetry.extras]
+[project.optional-dependencies]
 dev = ["pytest", "pytest-order"]
 #pyside2 = ["pyside2"]
 #pyside6 = ["pyside6"]
 
-[tool.poetry.scripts]
+[project.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"
+
+[tool.maturin]
+python-source = "py"
+module-name = "focusfeedbackgui.functions_rs"
 
 [tool.isort]
 line_length = 119
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

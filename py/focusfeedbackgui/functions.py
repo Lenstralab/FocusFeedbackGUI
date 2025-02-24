@@ -7,9 +7,28 @@ import scipy.ndimage
 import scipy.optimize
 import scipy.special
 
-from focusfeedbackgui_rs.functions import *
+from . import functions_rs as rs
 
 np.seterr(invalid='ignore')
+
+
+def meshgrid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """ create a meshgrid using arrays x and y """
+    return rs.meshgrid(np.asarray(x).astype(float), np.asarray(y).astype(float))
+
+
+def gaussian7grid(p: np.ndarray, xv: np.ndarray, yv: np.ndarray) -> np.ndarray:
+    """ create an elliptical 2d guassian on the grid defined by xv and yv
+        p: (x0, y0, sigma, integrated intensity, offset, ellipticity, angle)
+    """
+    return rs.gaussian7grid(np.asarray(p).astype(float), np.asarray(xv).astype(float), np.asarray(yv).astype(float))
+
+
+def gaussian(p: np.ndarray, x: int, y: int) -> np.ndarray:
+    """ create an elliptical 2d guassian on a grid with size x, y
+        p: (x0, y0, sigma, integrated intensity, offset, ellipticity, angle)
+    """
+    return rs.gaussian(np.asarray(p).astype(float), int(x), int(y))
 
 
 def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
