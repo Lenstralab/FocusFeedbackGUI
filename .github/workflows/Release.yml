@@ -137,6 +137,10 @@ jobs:
           python-version: '3.10'
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
       - name: Setup virtual environment and run pyinstaller
         run: |
           python -m venv venv
@@ -164,7 +168,7 @@ jobs:
         with:
           path: dist
       - name: Unzip wheels
-        run: unzip dist/*.zip
+        run: unzip dist/wheels-[!s]*
       - name: Release
         uses: ncipollo/release-action@v1
         with:
