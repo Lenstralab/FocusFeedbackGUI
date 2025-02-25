@@ -158,6 +158,6 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "dist/**/*.whl,dist/**/*.exe,dist/wheels-sdist/*"
+          artifacts: "dist/**/*.whl,dist/FocusFeedbackGUI_setup.exe/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
           tag: ${{ steps.computed-tag.outputs.tag }}
           commit: master
