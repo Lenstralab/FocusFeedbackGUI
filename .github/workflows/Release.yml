@@ -141,10 +141,8 @@ jobs:
         uses: crazy-max/ghaction-upx@v3
         with:
           install-only: true
-      - name: Setup virtual environment and run pyinstaller
+      - name: Run pyinstaller
         run: |
-          python -m venv venv
-          venv\Scripts\activate
           pip install pyinstaller pyside2 .
           pyinstaller focusfeedbackgui.spec --clean --noconfirm
       - name: Create installer
@@ -168,8 +166,8 @@ jobs:
         with:
           path: dist
       - name: Unzip wheels
-        run: unzip dist/wheels-[!s]*
+        run: unzip "dist/wheels-[!s]*" -d dist
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "FocusFeedbackGUI_setup.exe,dist/wheels-sdist.zip,*.whl"
+          artifacts: "dist/*.exe,dist/*.whl,dist/wheels-sdist.zip"
