@@ -137,10 +137,12 @@ jobs:
           python-version: '3.10'
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install pyinstaller, Pyside2 and focusfeedbackgui
-        run: pip install pyinstaller pyside2 .
-      - name: Run PyInstaller
-        run: pyinstaller focusfeedbackgui.spec --clean --noconfirm
+      - name: Setup virtual environment and run pyinstaller
+        run: |
+          python -m venv venv
+          venv\Scripts\activate
+          pip install pyinstaller pyside2 .
+          pyinstaller focusfeedbackgui.spec --clean --noconfirm
       - name: Create installer
         uses: joncloud/makensis-action@v4.1
         with:
@@ -162,7 +164,7 @@ jobs:
         with:
           path: dist
       - name: Unzip wheels
-        run: unzip dist/*
+        run: unzip dist/*.zip
       - name: Release
         uses: ncipollo/release-action@v1
         with:
