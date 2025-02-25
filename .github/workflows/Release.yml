@@ -6,25 +6,6 @@ permissions:
   contents: write
 
 jobs:
-  tag:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: The new tag
-        id: computed-tag
-        run: |
-          set -e
-          TAG=$(cat Cargo.toml \
-          | grep --extended-regexp "^version =" \
-          | grep --extended-regexp --only-matching "[0-9]+\.[0-9]+.[0-9]+[-\.\+a-zA-Z0-9]*" \
-          | head --lines=1)
-          echo "tag=v$TAG" >> "$GITHUB_OUTPUT"
-      - name: Tagging repo using version specified in Cargo.toml
-        uses: djordon/git-autotag-action@v0.7.0-beta1
-        with:
-          tag: ${{ steps.computed-tag.outputs.tag }}
-
   linux:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
@@ -157,7 +138,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [tag, linux, windows, macos, sdist, installer]
+    needs: [linux, windows, macos, sdist, installer]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -165,9 +146,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-      - name: Unzip wheels
-        run: unzip "dist/wheels-[!s]*" -d dist
+      - name: The new tag
+        id: computed-tag
+        run: |
+          set -e
+          TAG=$(cat Cargo.toml \
+          | grep --extended-regexp "^version =" \
+          | grep --extended-regexp --only-matching "[0-9]+\.[0-9]+.[0-9]+[-\.\+a-zA-Z0-9]*" \
+          | head --lines=1)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "dist/*.exe,dist/*.whl,dist/wheels-sdist.zip"
+          artifacts: "dist/**/*.whl,dist/*.exe,dist/wheels-sdist.zip"
+          tag: ${{ steps.computed-tag.outputs.tag }}
+          commit: master
