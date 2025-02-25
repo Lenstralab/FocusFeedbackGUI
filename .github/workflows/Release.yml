@@ -134,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FocusFeedbackGUI_setup.exe
-          path: .
+          path: FocusFeedbackGUI_setup.exe
 
   release:
     runs-on: ubuntu-latest
@@ -158,6 +158,6 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "dist/**/*.whl,dist/FocusFeedbackGUI_setup.exe/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
+          artifacts: "dist/wheels*/*.whl,dist/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
           tag: ${{ steps.computed-tag.outputs.tag }}
           commit: master
