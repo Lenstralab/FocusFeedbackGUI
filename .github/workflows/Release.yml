@@ -1,9 +1,9 @@
 name: Release
 
-on: [push, pull_request, workflow_call]
+on: [workflow_call, workflow_dispatch]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   linux:
@@ -116,14 +116,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install pyinstaller, Pyside2 and focusfeedbackgui
-        run: pip install pyinstaller pyside2 .
-      - name: Run PyInstaller
-        run: pyinstaller focusfeedbackgui.spec --clean --noconfirm
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+      - name: Run pyinstaller
+        run: |
+          pip install pyinstaller pyside2 .
+          pyinstaller focusfeedbackgui.spec --clean --noconfirm
       - name: Create installer
         uses: joncloud/makensis-action@v4.1
         with:
           script-file: focusfeedbackgui.nsi
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup
+          path: FocusFeedbackGUI_setup.exe
 
   release:
     runs-on: ubuntu-latest
@@ -135,9 +146,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
+      - name: The new tag
+        id: computed-tag
+        run: |
+          set -e
+          TAG=$(cat Cargo.toml \
+          | grep --extended-regexp "^version =" \
+          | grep --extended-regexp --only-matching "[0-9]+\.[0-9]+.[0-9]+[-\.\+a-zA-Z0-9]*" \
+          | head --lines=1)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
-          files: |
-            dist/*
-            FocusFeedbackGUI_setup.exe
+          artifacts: "dist/wheels*/*.whl,dist/setup/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
+          tag: ${{ steps.computed-tag.outputs.tag }}
+          commit: master
