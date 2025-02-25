@@ -133,7 +133,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: FocusFeedbackGUI_setup.exe
+          name: setup
           path: FocusFeedbackGUI_setup.exe
 
   release:
@@ -158,6 +158,6 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "dist/wheels*/*.whl,dist/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
+          artifacts: "dist/wheels*/*.whl,dist/setup/FocusFeedbackGUI_setup.exe,dist/wheels-sdist/*"
           tag: ${{ steps.computed-tag.outputs.tag }}
           commit: master
