@@ -62,7 +62,9 @@ def find_z(ell, q, dell=None, dq=None):
         s = 0
         for i in range(len(q)):
             s += (scipy.misc.derivative(lambda x: zhuang_ell(z, np.hstack((q[:i], x, q[(i + 1):]))), q[i]) * dq[i]) ** 2
-        dz = np.sqrt((dell**2+s)/dedz**2)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', category=RuntimeWarning)
+            dz = np.sqrt((dell**2+s)/dedz**2)
         z = (z, dz)
 
     return z
@@ -283,7 +285,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         r2lim = 0.6, 0.75
     if path is None:
         path = os.path.splitext(file)[0]
-    with Imread(file, axes='czyx') as im, PdfPages(f'{path}_Cyllens_calib.pdf') as pdf:
+    with Imread(file, axes='czyx') as im, PdfPages(f'{path}_cyllens_calib.pdf') as pdf:
         if em_lambdas is not None:
             if np.isscalar(em_lambdas):
                 em_lambdas = [em_lambdas] * im.shape['c']
@@ -308,7 +310,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         fig.add_subplot(gs[:2, :5])
         imz = np.hstack([im[channel].max('z') for channel in channels])
-        plt.imshow(imz, vmax=np.percentile(im, 99))
+        plt.imshow(imz, vmin=np.percentile(imz, 0.1), vmax=np.percentile(imz, 99.9))
         for i, channel in enumerate(channels):
             b = detections.query(f'C=={channel}')
             plt.plot(b['x'] + i * im.shape['y'], b['y'], 'or', markerfacecolor='none')
