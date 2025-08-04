@@ -17,15 +17,19 @@ def yaml_load(f):
     # fix loading scientific notation without decimal separator
     loader = yaml.SafeLoader
     loader.add_implicit_resolver(
-        'tag:yaml.org,2002:float',
-        re.compile(r'''^(?:
+        "tag:yaml.org,2002:float",
+        re.compile(
+            r"""^(?:
          [-+]?(?:[0-9][0-9_]*)\.[0-9_]*(?:[eE][-+]?[0-9]+)?
         |[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)
         |\.[0-9_]+(?:[eE][-+][0-9]+)?
         |[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*
         |[-+]?\\.(?:inf|Inf|INF)
-        |\.(?:nan|NaN|NAN))$''', re.X),
-        list('-+0123456789.'))
+        |\.(?:nan|NaN|NAN))$""",
+            re.X,
+        ),
+        list("-+0123456789."),
+    )
     return yaml.load(f, loader)
 
 
@@ -46,7 +50,7 @@ class QThread(QtCore.QThread):
         try:
             self.done_signal.emit((0, self.target(*self.args, **self.kwargs)))
         except Exception:
-            warnings.warn(f'\n{format_exc()}')
+            warnings.warn(f"\n{format_exc()}")
             self.done_signal.emit((1, format_exc()))
 
     def join(self, state):
@@ -67,14 +71,15 @@ def error_wrap(fun, default=None):
         try:
             return fun(*args, **kwargs)
         except Exception:
-            warnings.warn(f'\n{format_exc()}')
+            warnings.warn(f"\n{format_exc()}")
             return default
+
     return e
 
 
 def mask_pk(pk, mask):
-    """ remove points in nx2 array which are located outside mask
-        wp@tl20190709
+    """remove points in nx2 array which are located outside mask
+    wp@tl20190709
     """
     pk = np.round(pk)
     idx = []
@@ -85,8 +90,8 @@ def mask_pk(pk, mask):
 
 
 def weighted_mean(x, dx):
-    s2 = 1 / (np.nansum(dx ** -2))
-    return s2 * np.nansum(x / dx ** 2), np.sqrt(s2)
+    s2 = 1 / (np.nansum(dx**-2))
+    return s2 * np.nansum(x / dx**2), np.sqrt(s2)
 
 
 def circ_weighted_mean(t, dt=1, period=2 * np.pi):
@@ -95,7 +100,8 @@ def circ_weighted_mean(t, dt=1, period=2 * np.pi):
     sin = np.sum(np.sin(t) / dt)
     cos = np.sum(np.cos(t) / dt)
     return np.arctan2(sin, cos) * period / 2 / np.pi, np.sqrt(np.sum((cos * np.cos(t) + sin * np.sin(t)) ** 2)) / (
-                sin ** 2 + cos ** 2) * period / 2 / np.pi
+        sin**2 + cos**2
+    ) * period / 2 / np.pi
 
 
 def rm_nan(*a):
@@ -130,8 +136,8 @@ def outliers(data, keep=True):
 
 
 def find_range(x, s):
-    """ Finds the range (x-s/2;x+s/2) with the biggest number of points in x
-        wp@tl20190301
+    """Finds the range (x-s/2;x+s/2) with the biggest number of points in x
+    wp@tl20190301
     """
     length = len(x)
     t = np.zeros(2 * length)
@@ -146,7 +152,7 @@ def find_range(x, s):
 
 
 def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, force=True, transform_files=None):
-    if transform_files is not None and transform_files[0].endswith('.yml'):
+    if transform_files is not None and transform_files[0].endswith(".yml"):
         bead_files = None
         transform = transform_files[0]
     else:
@@ -156,16 +162,16 @@ def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, for
     if os.path.exists(file):
         with Imread(file).with_transform(file=transform, bead_files=bead_files) as im:
             if out is None:
-                out = file[:-4] + '_transformed.tif'
+                out = file[:-4] + "_transformed.tif"
             out = os.path.abspath(out)
             if not os.path.exists(os.path.dirname(out)):
                 os.makedirs(os.path.dirname(out))
             if os.path.exists(out) and not force:
-                print('File {} exists already, add the -f flag if you want to overwrite it.'.format(out))
+                print("File {} exists already, add the -f flag if you want to overwrite it.".format(out))
             else:
                 im.save_as_tiff(out, channel, z_slice, time, split)
     else:
-        print('File does not exist.')
+        print("File does not exist.")
 
 
 def info(file):

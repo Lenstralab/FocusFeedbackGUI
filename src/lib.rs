@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 #[pymodule]
 #[pyo3(name = "functions_rs")]
 fn functions_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    #[allow(clippy::type_complexity)]
     #[pyfn(m)]
     fn meshgrid<'py>(
         py: Python<'py>,

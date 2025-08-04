@@ -64,6 +64,7 @@ class Microscope(MicroscopeClass):
         def fun():
             while not self.ready and not app.stop and not app.quit:
                 sleep(0.1)
+
         self.wait_thread = QThread(fun, callback)
 
     def close(self):
@@ -87,21 +88,25 @@ class Microscope(MicroscopeClass):
             pythoncom.CoInitialize()
             for zen_id, vbz_id in self._id.values():  # First try co-marshalling
                 try:
-                    zen = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(zen_id,
-                                                                                            pythoncom.IID_IDispatch))
-                    vba = win32com.client.Dispatch(pythoncom.CoGetInterfaceAndReleaseStream(vbz_id,
-                                                                                            pythoncom.IID_IDispatch))
+                    zen = win32com.client.Dispatch(
+                        pythoncom.CoGetInterfaceAndReleaseStream(zen_id, pythoncom.IID_IDispatch)
+                    )
+                    vba = win32com.client.Dispatch(
+                        pythoncom.CoGetInterfaceAndReleaseStream(vbz_id, pythoncom.IID_IDispatch)
+                    )
                     break
                 except Exception:
                     continue
             else:
-                zen = win32com.client.Dispatch('Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface')
+                zen = win32com.client.Dispatch("Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface")
                 if self.event_handler is None:
-                    vba = win32com.client.Dispatch('Lsm5Vba.Application')
+                    vba = win32com.client.Dispatch("Lsm5Vba.Application")
                 else:
-                    vba = win32com.client.DispatchWithEvents('Lsm5Vba.Application', self.event_handler)
-                self._id[thread_id] = (pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, zen),
-                                       pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, vba))
+                    vba = win32com.client.DispatchWithEvents("Lsm5Vba.Application", self.event_handler)
+                self._id[thread_id] = (
+                    pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, zen),
+                    pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, vba),
+                )
             self._zen_vba[thread_id] = (zen, vba)
         return self._zen_vba[thread_id]
 
@@ -159,21 +164,21 @@ class Microscope(MicroscopeClass):
     @property
     def objective_magnification(self):
         try:
-            return float(search(r'\d+x', self.current_settings.Objective).group()[:-1])
+            return float(search(r"\d+x", self.current_settings.Objective).group()[:-1])
         except Exception:
             return 0
 
     @property
     def objective_na(self):
         try:
-            return float(search(r'\d\.\d+', self.current_settings.Objective).group())
+            return float(search(r"\d\.\d+", self.current_settings.Objective).group())
         except Exception:
             return 1
 
     @property
     def optovar_magnification(self):
         try:
-            return float(self.zen.GUI.Acquisition.LightPath.TubeLens.ByName[5:-1].replace(',', '.'))
+            return float(self.zen.GUI.Acquisition.LightPath.TubeLens.ByName[5:-1].replace(",", "."))
         except Exception:
             return 0
 
@@ -190,7 +195,7 @@ class Microscope(MicroscopeClass):
         if self.ready:
             return self.current_doc.Title()
         else:
-            return ''
+            return ""
 
     @property
     def focus_pos(self):
@@ -216,8 +221,9 @@ class Microscope(MicroscopeClass):
         time = self.time
         if time > 0:
             time -= 1
-        return np.reshape(scan_doc.GetSubregion(channel, x0, y0, 0, time, 1, 1, 1, 1, size, size, 1, 1, 2)[0],
-                          (size, size)), time
+        return np.reshape(
+            scan_doc.GetSubregion(channel, x0, y0, 0, time, 1, 1, 1, 1, size, size, 1, 1, 2)[0], (size, size)
+        ), time
 
     def get_frame(self, channel=1, x=None, y=None, width=32, height=32):
         width = 2 * int((width + 1) / 2)  # Ensure evenness
@@ -237,8 +243,9 @@ class Microscope(MicroscopeClass):
         time = self.time
         if time > 0:
             time -= 1
-        return np.reshape(scan_doc.GetSubregion(channel, x, y, 0, time, 1, 1, 1, 1, width, height, 1, 1, 2)[0],
-                          (width, height)), time
+        return np.reshape(
+            scan_doc.GetSubregion(channel, x, y, 0, time, 1, 1, 1, 1, width, height, 1, 1, 2)[0], (width, height)
+        ), time
 
     @property
     def channel_colors_int(self):
@@ -297,7 +304,7 @@ class Microscope(MicroscopeClass):
                     if channel.Acquire:
                         channel_name = channel.Name
                         if n_tracks > 1:
-                            channel_name += f'-T{track_i + 1}'
+                            channel_name += f"-T{track_i + 1}"
                         channels[2 * track_i + channel_n] = channel_name
                 track_n += 1
             track_i += 1
@@ -318,8 +325,9 @@ class Microscope(MicroscopeClass):
     def wait_for_next_frame(self, timeout=5):
         sleep_time = 0.02
         wait_time = 0.0
-        while (self.progress_coord() == self.last_progress_coord) & (
-                timeout > wait_time) & self.is_experiment_running():
+        while (
+            (self.progress_coord() == self.last_progress_coord) & (timeout > wait_time) & self.is_experiment_running()
+        ):
             wait_time += sleep_time
             sleep(sleep_time)
         self.last_progress_coord = self.progress_coord()
@@ -327,8 +335,10 @@ class Microscope(MicroscopeClass):
     @property
     def is_experiment_running(self):
         scan_doc = self.current_doc
-        return self.zen.GUI.Acquisition.IsExperimentRunning.value \
+        return (
+            self.zen.GUI.Acquisition.IsExperimentRunning.value
             and scan_doc.GetDimensionTime() > 1 >= scan_doc.GetDimensionZ()
+        )
 
     @property
     def is_z_stack(self):
@@ -363,10 +373,20 @@ class Microscope(MicroscopeClass):
             index = self.manipulate_drawing_list(overlay, index)
             overlay.LineWidth = LineWidth
             overlay.Color = color  # Green
-            overlay.AddDrawingElement(5, 3, (x, x + radius * np.sqrt(ellipticity) * np.cos(theta),
-                                             x + radius / np.sqrt(ellipticity) * np.sin(theta)),
-                                      (y, y - radius * np.sqrt(ellipticity) * np.sin(theta),
-                                       y + radius / np.sqrt(ellipticity) * np.cos(theta)))
+            overlay.AddDrawingElement(
+                5,
+                3,
+                (
+                    x,
+                    x + radius * np.sqrt(ellipticity) * np.cos(theta),
+                    x + radius / np.sqrt(ellipticity) * np.sin(theta),
+                ),
+                (
+                    y,
+                    y - radius * np.sqrt(ellipticity) * np.sin(theta),
+                    y + radius / np.sqrt(ellipticity) * np.cos(theta),
+                ),
+            )
             return index
         else:
             self.remove_drawing(index)
@@ -378,8 +398,9 @@ class Microscope(MicroscopeClass):
             index = self.manipulate_drawing_list(overlay, index)
             overlay.LineWidth = LineWidth
             overlay.Color = color  # Green
-            overlay.AddDrawingElement(4, 2, (float(x - width / 2), float(x + width / 2)),
-                                      (float(y - height / 2), float(y + height / 2)))
+            overlay.AddDrawingElement(
+                4, 2, (float(x - width / 2), float(x + width / 2)), (float(y - height / 2), float(y + height / 2))
+            )
             return index
         else:
             self.remove_drawing(index)
@@ -467,13 +488,13 @@ class Microscope(MicroscopeClass):
     @property
     def duolink_filter(self):
         filter_set = self.vba.Lsm5.Hardware().CpFilterSets()
-        filter_set.Select('2C_FilterSlider')
+        filter_set.Select("2C_FilterSlider")
         return filter_set.FilterSetPosition - 1
 
     @duolink_filter.setter
     def duolink_filter(self, position):
         filter_set = self.vba.Lsm5.Hardware().CpFilterSets()
-        filter_set.Select('2C_FilterSlider')
+        filter_set.Select("2C_FilterSlider")
         filter_set.FilterSetPosition = position + 1
 
     @staticmethod
@@ -488,9 +509,10 @@ class EventHandlerMetaClass(type):
     to call an event handler method that isn't defined by the event
     handler instance.
     """
+
     @staticmethod
     def null_event_handler(event, *args, **kwargs):
-        print(('Unhandled event {}'.format(event), args, kwargs))
+        print(("Unhandled event {}".format(event), args, kwargs))
 
     def __new__(mcs, name, bases, dictionary):
         # Construct the new class.
@@ -516,7 +538,7 @@ class Events(QtCore.QThread):
         self.zen = self.app.microscope
         self.previous_zen = None
         self.current_zen = self.zen.current_doc
-        self.zen.enable_event('LeftButtonDown', self.current_zen)
+        self.zen.enable_event("LeftButtonDown", self.current_zen)
         self.args = args
         self.kwargs = kwargs
         self.event_signal.connect(self.callback)
@@ -527,24 +549,25 @@ class Events(QtCore.QThread):
         class EventHandlerCls(metaclass=EventHandlerMetaClass):
             @staticmethod
             def OnThrowEvent(*args):
-                self.event_signal.emit(('OnThrowEvent', args))
+                self.event_signal.emit(("OnThrowEvent", args))
 
             @staticmethod
             def OnThrowPropertyEvent(*args):
-                self.event_signal.emit(('OnThrowPropertyEvent', args))
+                self.event_signal.emit(("OnThrowPropertyEvent", args))
+
         return EventHandlerCls
 
     def run(self):
         with Microscope(self.app.microscope_class, event_handler=self.event_handler()):
             i = 0
             while not self.app.quit:
-                sleep(.01)
+                sleep(0.01)
                 pythoncom.PumpWaitingMessages()
                 i = (i + 1) % 100
                 if not i:
                     # this only works when zen is ready for it, and we can't know whether it worked,
                     # so do it every second
-                    self.event_signal.emit(('enable_event', ('LeftButtonDown',)))
+                    self.event_signal.emit(("enable_event", ("LeftButtonDown",)))
         self.done_signal.emit(None)
 
     def callback(self, args):
@@ -557,7 +580,7 @@ class Events(QtCore.QThread):
 
     @property
     def title(self):
-        return '' if not self.current_zen else self.current_zen.Title()
+        return "" if not self.current_zen else self.current_zen.Title()
 
     @error_wrap
     def enable_event(self, event, *args, **kwargs):
@@ -581,28 +604,31 @@ class Events(QtCore.QThread):
     def OnThrowPropertyEvent(self, *args):
         # if args[1] not in ('HBO', 'TirfAngle', 'TransmissionSpot', 'Focus'):
         #     print(f'{time.strftime("%H:%M:%S", time.localtime())} OnThrowPropertyEvent: {args}')
-        if args[1] == '2C_FilterSlider':
+        if args[1] == "2C_FilterSlider":
             self.app.duolink_filter_lbl.setText(
-                self.app.duolink_block_drp.currentText().split(' & ')[self.zen.duolink_filter])
+                self.app.duolink_block_drp.currentText().split(" & ")[self.zen.duolink_filter]
+            )
             self.app.duolink_filter_rdb.changeState(self.zen.duolink_filter)
-        elif args[1] == 'Stage':
+        elif args[1] == "Stage":
             last_pos = self.zen.stage_pos
             frame_size = self.zen.frame_size
             pxsize = self.zen.pxsize
-            self.app.map.numel_data(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
-                                    frame_size[1] * pxsize / 1e6)
+            self.app.map.numel_data(
+                last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6, frame_size[1] * pxsize / 1e6
+            )
             self.app.map.draw()
-        elif args[1] in ('DataColorPalette', 'FramesPerStack', 'DataAcquire', 'TrackAcquire'):
+        elif args[1] in ("DataColorPalette", "FramesPerStack", "DataAcquire", "TrackAcquire"):
             self.app.change_color()
-        elif args[1] == 'OBJREV':
+        elif args[1] == "OBJREV":
             self.app.change_wavelengths()
-        elif args[1] == 'HR_MainShutter1':
+        elif args[1] == "HR_MainShutter1":
             if self.title != self.zen.title:  # current document changed
                 self.previous_zen, self.current_zen = self.current_zen, self.zen.current_doc
             elif self.zen.is_experiment_running:
                 last_pos = self.zen.stage_pos
                 frame_size = self.zen.frame_size
                 pxsize = self.zen.pxsize
-                self.app.map.append_data_docs(last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6,
-                                              frame_size[1] * pxsize / 1e6)
+                self.app.map.append_data_docs(
+                    last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6, frame_size[1] * pxsize / 1e6
+                )
                 self.app.map.draw()

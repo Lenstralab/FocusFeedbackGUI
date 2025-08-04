@@ -59,3 +59,7 @@ module-name = "focusfeedbackgui.functions_rs"
 
 [tool.isort]
 line_length = 119
+
+[tool.ruff]
+line-length = 119
+format.skip-magic-trailing-comma = true

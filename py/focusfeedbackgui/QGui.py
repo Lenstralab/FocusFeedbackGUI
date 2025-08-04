@@ -14,8 +14,8 @@ except ImportError:
 
 from focusfeedbackgui.utilities import error_wrap
 
-rcParams.update({'figure.autolayout': True})
-np.seterr(all='ignore')
+rcParams.update({"figure.autolayout": True})
+np.seterr(all="ignore")
 
 
 class RadioButtons(QWidget):
@@ -73,7 +73,7 @@ class CheckBoxes(QWidget):
             self.checkBoxes[-1].toggled.connect(self.onClicked)
             self.layout.addWidget(self.checkBoxes[-1], i, 0)
             self.textBoxes.append(QLineEdit())
-            self.textBoxes[-1].setText('500')
+            self.textBoxes[-1].setText("500")
             self.textBoxes[-1].textChanged.connect(self.valChange(i))
             self.layout.addWidget(self.textBoxes[-1], i, 1)
             self.textBoxValues.append(500)
@@ -100,9 +100,10 @@ class CheckBoxes(QWidget):
             try:
                 self.textBoxValues[n] = int(val)
             except Exception:
-                warnings.warn(f'\n{format_exc()}')
+                warnings.warn(f"\n{format_exc()}")
             if self.callback_text:
                 self.callback_text(n, val)
+
         return fun
 
     def setTextBoxValue(self, n, val):
@@ -125,7 +126,7 @@ class CheckBoxes(QWidget):
         try:
             self.checkBoxes[n].setStyleSheet("QRadioButton\n{\nbackground-color : " + color + "\n}")
         except Exception:
-            warnings.warn(f'\n{format_exc()}')
+            warnings.warn(f"\n{format_exc()}")
 
     def connect(self, callback=None, callbacktext=None):
         self.callback = callback
@@ -147,7 +148,7 @@ class PlotCanvas(FigureCanvas):
 
 
 class SubPlot:
-    def __init__(self, canvas, position=111, linespec='-r', color=None, handle=0):
+    def __init__(self, canvas, position=111, linespec="-m", color=None, handle=0):
         if isinstance(position, tuple):
             self.ax = canvas.fig.add_subplot(*position)
         else:
@@ -160,7 +161,7 @@ class SubPlot:
     def __contains__(self, item):
         return item in self.plt
 
-    def append_plot(self, handle, linespec='-b', color=None):
+    def append_plot(self, handle, linespec="-b", color=None):
         if color is None:
             self.plt[handle] = self.ax.plot([], linespec)[0]
         else:
@@ -223,7 +224,7 @@ class SubPlot:
 
 
 class SubPatchPlot:
-    def __init__(self, canvas, position=111, color='r'):
+    def __init__(self, canvas, position=111, color="r"):
         if isinstance(position, tuple):
             self.ax = canvas.fig.add_subplot(*position)
         else:
@@ -242,7 +243,9 @@ class SubPatchPlot:
     def append_data(self, x, y, dx, dy=None):
         if dy is None:
             dy = dx
-        rect = pyplot.Rectangle((x-dx/2, y-dy/2), dx, dy, facecolor=self.color, alpha=1, edgecolor='g', zorder=1)
+        rect = pyplot.Rectangle(
+            (x - dx / 2, y - dy / 2), dx, dy, facecolor=self.color, alpha=1, edgecolor="g", zorder=1
+        )
         self.ax.add_patch(rect)
         if self.rects:
             self.rects[-1].set_edgecolor(None)
@@ -253,7 +256,7 @@ class SubPatchPlot:
     def append_data_docs(self, x, y, dx, dy=None):
         if dy is None:
             dy = dx
-        rect = pyplot.Rectangle((x-dx/2, y-dy/2), dx, dy, fill=False, alpha=1, edgecolor='k', zorder=10)
+        rect = pyplot.Rectangle((x - dx / 2, y - dy / 2), dx, dy, fill=False, alpha=1, edgecolor="k", zorder=10)
         self.ax.add_patch(rect)
         if self.rects:
             self.rects[-1].set_edgecolor(None)
