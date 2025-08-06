@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "matplotlib",
-    "ndbioimage>=2025.2.1",
+    "ndbioimage>=2025.8.0",
     "numpy>=1.16.5, <2.0.0",
     "pandas>=2.0.0",
     "parfor>=2025.1.0",
@@ -62,4 +62,4 @@ line_length = 119
 
 [tool.ruff]
 line-length = 119
-format.skip-magic-trailing-comma = true
+indent-width = 4

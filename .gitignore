@@ -8,9 +8,8 @@ TransformParameters.0.txt
 /target/
 /venv*/
 *.czi
-/FocusFeedbackGUI_setup.exe
-/focusfeedbackgui/functions_rs.pyd
-/Cargo.lock
+*.exe
+*.pyd
 *.so
 # ask Zeiss for a license for Zen Blue
 zen_blue.py

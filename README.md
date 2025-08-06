@@ -28,7 +28,10 @@ or
 
 
     pip install PySide2
-  
+
+Note: The package (ndbioimage)[https://pypi.org/project/ndbioimage/] is used to read image files. It can read some files like .czi and .tiff. If you plan on using another file format bioformats can be used by ndbioimage. To use bioformats the package (jpype1)[https://pypi.org/project/jpype1/] should be installed:
+
+    pip install JPype1
 
 - Configure:
 Edit C:\Program Files\Python3x\Lib\site-packages\focusfeedbackgui\conf.yml
