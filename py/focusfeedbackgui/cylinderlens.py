@@ -58,11 +58,11 @@ def find_z(ell, q, dell=None, dq=None):
 
     if dell is not None:
         # attempt at error estimation
-        dedz = scipy.misc.derivative(lambda x: zhuang_ell(z, q), z)
+        dedz = scipy.differentiate.derivative(lambda x: zhuang_ell(x, q), z).df
         s = 0
         for i in range(len(q)):
             s += (
-                scipy.misc.derivative(lambda x: zhuang_ell(z, np.hstack((q[:i], x, q[(i + 1) :]))), q[i]) * dq[i]
+                scipy.differentiate.derivative(lambda x: zhuang_ell(z, [*q[:i], x, *q[(i + 1) :]]), q[i]).df * dq[i]
             ) ** 2
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
