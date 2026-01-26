@@ -677,11 +677,13 @@ class App(UiMainWindow):
         self.warp_btn.setEnabled(False)
         self.warp_action.setEnabled(False)
         self.warp_with_action.setEnabled(False)
+        transforms = {k: v["transform"] for k, v in self.conf.items() if isinstance(v, dict) and "transform" in v}
+        cyllenses = {channel: self.get_cyllens(channel) for channel in self.NS.channels}
 
         def warp_files(files):
             for file in files:
                 if os.path.isfile(file):
-                    warp(file, transform_files=transform_files)
+                    warp(file, transform_files=transform_files, transforms=transforms, cyllenses=cyllenses)
 
         self.warp_thread = QThread(warp_files, self.warp_done, files)
 

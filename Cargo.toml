@@ -1,7 +1,7 @@
 [package]
 name = "focusfeedbackgui"
-version = "2025.8.1"
-edition = "2021"
+version = "2026.1.0"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -9,7 +9,7 @@ name = "focusfeedbackgui"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = { version = "0.25.1", features = ["extension-module", "abi3-py38", "generate-import-lib"] }
-ndarray = { version = "0.16.1", features = ["approx", "rayon"] }
-numpy = "0.25.0"
-statrs = "0.18.0"
+pyo3 = { version = "0.27", features = ["extension-module", "abi3-py38", "generate-import-lib"] }
+ndarray = { version = "0.17", features = ["approx", "rayon"] }
+numpy = "0.27"
+statrs = "0.18"

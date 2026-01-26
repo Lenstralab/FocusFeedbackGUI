@@ -42,7 +42,7 @@ you don't do this, Focus Feedback GUI will wait until you do it.
 - Find the shortcut in the start menu or run this command (you can make a shortcut to it):
 
 
-    python FocusFeedbackGUI/focusfeedbackgui
+    python -m focusfeedbackgui
 
 The program should start and show a screen with 3 tabs.
 
@@ -74,8 +74,13 @@ tracking experiment.
 make ZEN switch the duolink filter.
 - Max stepsize: the maximum distance the GUI can move the focus each frame.
 - Calibrate with beads: opens a file selector to select a file to use for calibrating the parameters used for Zhuang
-mode feedback. Before this, make a z-stack (100 nm interval, 101 planes) centered on beads (for example Tetraspec, 100
+mode feedback. Before this, make a z-stack (50 nm interval, 101 planes) centered on beads (for example TetraSpeck, 100
 nm)
+- Warp image file: correct the warp introduced into a saved image and save the corrected file as a tif file. Before
+pressing this button, make sure the feedback channels are set correctly, as this information is used to determine which
+channels need to be corrected. Also, make a z-stack (50 nm interval, 101 planes) centered on beads (for example
+TetraSpeck, 100 nm), with the same channels and cylindrical lens(es). In the first dialog, choose a bead stack to
+calculate the correction from, or choose a transform.yml file. In the second dialog, choose the file(s) to be corrected. 
 
 The 'Map' tab will display a map of the sample. The user can see here which positions have been visited, and at which
 positions an experiment has been done.

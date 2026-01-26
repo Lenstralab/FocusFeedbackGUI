@@ -151,7 +151,18 @@ def find_range(x, s):
         return x[i - length] - s / 2
 
 
-def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, force=True, transform_files=None):
+def warp(
+    file,
+    out=None,
+    channel=None,
+    z_slice=None,
+    time=None,
+    split=False,
+    force=True,
+    transform_files=None,
+    transforms=None,
+    cyllenses=None,
+):
     if transform_files is not None and transform_files[0].endswith(".yml"):
         bead_files = None
         transform = transform_files[0]
@@ -160,7 +171,27 @@ def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, for
         transform = None
 
     if os.path.exists(file):
-        with Imread(file).with_transform(file=transform, bead_files=bead_files) as im:
+        with Imread(file) as im:
+            default_transform = None
+            main_channel = 0
+            if cyllenses is not None:
+                channels_wo_cl = set(range(im.shape["c"])) - set(cyllenses)
+                if len(channels_wo_cl) > 0:
+                    main_channel = min(channels_wo_cl)
+            if transforms is not None:
+                magnification_str = (
+                    f"{im.objective.nominal_magnification:.0f}x{10 * im.tubelens.nominal_magnification:.0f}"
+                )
+                cyllens = cyllenses.get(main_channel)
+                if cyllens is not None:
+                    default_transform = transforms.get(cyllens + magnification_str)
+
+            jm = im.with_transform(
+                file=transform,
+                bead_files=bead_files,
+                main_channel=main_channel,
+                default_transform=default_transform,
+            )
             if out is None:
                 out = file[:-4] + "_transformed.tif"
             out = os.path.abspath(out)
@@ -169,7 +200,7 @@ def warp(file, out=None, channel=None, z_slice=None, time=None, split=False, for
             if os.path.exists(out) and not force:
                 print("File {} exists already, add the -f flag if you want to overwrite it.".format(out))
             else:
-                im.save_as_tiff(out, channel, z_slice, time, split)
+                jm.save_as_tiff(out, channel, z_slice, time, split)
     else:
         print("File does not exist.")
 

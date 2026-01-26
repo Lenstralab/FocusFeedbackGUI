@@ -1,11 +1,13 @@
-use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 
-#[pymodule]
-#[pyo3(name = "functions_rs")]
-fn functions_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pymodule(name = "functions_rs")]
+mod functions_rs {
+    use crate::rs;
+    use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+    use pyo3::prelude::*;
+
     #[allow(clippy::type_complexity)]
-    #[pyfn(m)]
+    #[pyfunction]
     fn meshgrid<'py>(
         py: Python<'py>,
         x: PyReadonlyArray1<f64>,
@@ -15,7 +17,7 @@ fn functions_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok((xv.into_pyarray(py), yv.into_pyarray(py)))
     }
 
-    #[pyfn(m)]
+    #[pyfunction]
     fn gaussian7grid<'py>(
         py: Python<'py>,
         p: PyReadonlyArray1<f64>,
@@ -25,7 +27,7 @@ fn functions_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Ok(rs::gaussian7grid(p.as_array(), xv.as_array(), yv.as_array()).into_pyarray(py))
     }
 
-    #[pyfn(m)]
+    #[pyfunction]
     fn gaussian<'py>(
         py: Python<'py>,
         p: PyReadonlyArray1<f64>,
@@ -34,8 +36,6 @@ fn functions_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ) -> PyResult<Bound<'py, PyArray2<f64>>> {
         Ok(rs::gaussian(p.as_array(), x, y).into_pyarray(py))
     }
-
-    Ok(())
 }
 
 mod rs {

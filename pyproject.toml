@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "matplotlib",
-    "ndbioimage>=2025.8.0",
+    "ndbioimage>=2026.1.2",
     "numpy",
     "pandas>=2.0.0",
     "parfor>=2025.1.0",
