@@ -251,7 +251,10 @@ class Microscope(MicroscopeClass):
     def channel_colors_int(self):
         # We cannot get colors from settings without disturbing zen's gui, so get them from the last document instead
         scan_doc = self.current_doc
-        return [scan_doc.ChannelColor(channel) for channel in self.active_channels.keys()]
+        colors = {
+            scan_doc.ChannelName(i): scan_doc.ChannelColor(i) for i in range(self.current_settings.NumberOfChannels())
+        }
+        return [colors.get(name, 0) for name in self.active_channels.values()]
 
     @property
     def doc_channel_colors_int(self):
