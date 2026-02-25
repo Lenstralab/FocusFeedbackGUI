@@ -124,7 +124,7 @@ jobs:
           install-only: true
       - name: Run pyinstaller
         run: |
-          pip install pyinstaller pyside2 .
+          pip install pyinstaller pyside2 pywin32 .
           pyinstaller focusfeedbackgui.spec --clean --noconfirm
       - name: Create installer
         uses: joncloud/makensis-action@v5.0
