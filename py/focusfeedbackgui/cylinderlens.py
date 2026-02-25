@@ -6,13 +6,12 @@ import numpy as np
 import pandas
 import scipy
 import skimage.filters
+from focusfeedbackgui import functions as fn
+from focusfeedbackgui import utilities
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 from ndbioimage import Imread
 from parfor import parfor
-
-from focusfeedbackgui import functions as fn
-from focusfeedbackgui import utilities
 
 warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread will likely fail.")
 A4 = (8.27, 11.69)

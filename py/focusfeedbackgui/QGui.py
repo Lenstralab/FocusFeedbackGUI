@@ -2,7 +2,7 @@ import warnings
 from traceback import format_exc
 
 import numpy as np
-from matplotlib import pyplot, rcParams
+from matplotlib import patches, pyplot, rcParams
 from matplotlib.figure import Figure
 
 try:
@@ -270,4 +270,56 @@ class SubPatchPlot:
         self.canvas.draw()
 
     def draw(self):
+        self.canvas.draw()
+
+
+class SubImPlot:
+    def __init__(self, canvas, position=111):
+        self.patches = {}
+        if isinstance(position, tuple):
+            self.ax = canvas.fig.add_subplot(*position)
+        else:
+            self.ax = canvas.fig.add_subplot(position)
+            canvas.subplot.append(self)
+            self.canvas = canvas
+
+    def update(self, image):
+        self.ax.imshow(image)
+        self.canvas.draw()
+
+    def draw(self):
+        self.canvas.draw()
+
+    def set_patches(self, new_patches):
+        indexes = set(self.patches)
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        center = (xlim[1] - xlim[0]) / 2, (ylim[1] - xlim[0]) / 2
+        for index, patch in new_patches.items():
+            if len(patch) == 6:
+                p = self.patches.get(index)
+                if isinstance(p, patches.Rectangle):
+                    p.set_xy((patch[0] - center[0], patch[1] - center[1]))
+                    p.set_width(patch[2])
+                    p.set_height(patch[3])
+                else:
+                    p = patches.Rectangle(patch[:2], patch[2], patch[3], fc="none", ec="w", lw=patch[5])
+                    self.patches[index] = p
+                    self.ax.add_patch(p)
+            elif len(patch) == 7:
+                p = self.patches.get(index)
+                if isinstance(p, patches.Ellipse):
+                    p.set_xy((patch[0] - center[0], patch[1] - center[1]))
+                    p.set_width(patch[2])
+                    p.set_height(patch[3])
+                    p.set_angle(patch[6])
+                else:
+                    p = patches.Ellipse(patch[:2], patch[2], patch[3], angle=patch[4], fc="none", ec="w", lw=patch[6])
+                    self.patches[index] = p
+                    self.ax.add_patch(p)
+            if index in indexes:
+                indexes.remove(index)
+        for index in indexes:
+            patch = self.patches.pop(index)
+            patch.remove()
         self.canvas.draw()

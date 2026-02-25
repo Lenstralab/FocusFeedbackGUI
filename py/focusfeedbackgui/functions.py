@@ -49,7 +49,7 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
         im = scipy.ndimage.gaussian_filter(im, sigma / 1.1)
 
     if xy is None:
-        xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)))
+        xy = np.array(np.unravel_index(np.nanargmax(im.T), np.shape(im)[::-1]))
     r = 5
     cr = np.round(((xy[0] - r, xy[0] + r + 1), (xy[1] - r, xy[1] + r + 1))).astype("int")
     jm = crop(im, *cr)
@@ -84,10 +84,9 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
     q[2] = np.abs(q[2])
     q[5] = np.abs(q[5])
     r2 = 1 - np.nansum((jm - gaussian7grid(q, xv, yv)) ** 2) / np.nansum((jm - np.nanmean(jm)) ** 2)
-    dq = fminerr(lambda p0: gaussian7grid(p0, xv, yv), q, jm)[1]
     q[0:2] += cs[:, 0]
     if err:
-        return q, dq, r2
+        return q, fminerr(lambda p0: gaussian7grid(p0, xv, yv), q, jm)[1], r2
     else:
         return q, r2
 
@@ -102,7 +101,7 @@ def fitgaussint(im, theta=None):
     S = np.shape(im)
     q = np.zeros(7, "float")
 
-    x, y = np.meshgrid(range(S[0]), range(S[1]))
+    x, y = np.meshgrid(range(S[1]), range(S[0]))
     q[4] = np.nanmin(im)
     jm = im - q[4]
     q[3] = np.nansum(jm)

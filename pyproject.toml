@@ -15,7 +15,7 @@ keywords = ["microscopy", "focus", "feedback"]
 include = ["conf.yml", "stylesheet.qss"]
 requires-python = ">=3.8"
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
     "Programming Language :: Rust",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -37,7 +37,6 @@ dependencies = [
     "pyside2; python_version<'3.9'",
     "pyside6; python_version>'3.10'",
     "pyyaml",
-    "pywin32; sys_platform=='win32'",
     "scikit-image>=0.18.0",
     "scipy>=1.15.0",
 ]
@@ -49,6 +48,8 @@ repository = "https://github.com/Lenstralab/FocusFeedbackGUI"
 dev = ["pytest", "pytest-order"]
 #pyside2 = ["pyside2"]
 #pyside6 = ["pyside6"]
+zen_black = ["pywin32"]
+zen_blue = ["pywin32", "grpclib"]
 
 [project.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"

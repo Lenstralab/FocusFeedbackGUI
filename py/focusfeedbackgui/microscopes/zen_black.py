@@ -8,7 +8,6 @@ from time import sleep
 import numpy as np
 import pythoncom
 import win32com.client
-
 from focusfeedbackgui.microscopes import MicroscopeClass
 from focusfeedbackgui.utilities import QThread, error_wrap
 
@@ -51,7 +50,8 @@ class Cst(Enum):
 class Microscope(MicroscopeClass):
     has_events = True
 
-    def __init__(self, *args, event_handler=None, **kwargs):
+    def __init__(self, _name=None, _namespace=None, _in_feedback_loop=False, *_args, event_handler=None, **_kwargs):
+        self.wait_thread = None
         self.event_handler = event_handler
         self._zen_vba = {}
         self._id = {}
@@ -576,7 +576,7 @@ class Events(QtCore.QThread):
     def callback(self, args):
         getattr(self, args[0])(*args[1])
 
-    def join(self, *args, **kwargs):
+    def join(self, *_args, **_kwargs):
         self.quit()
         self.wait()
         self.is_alive = False
@@ -586,7 +586,7 @@ class Events(QtCore.QThread):
         return "" if not self.current_zen else self.current_zen.Title()
 
     @error_wrap
-    def enable_event(self, event, *args, **kwargs):
+    def enable_event(self, event, *_args, **_kwargs):
         self.zen.disable_event(event, self.previous_zen)
         self.zen.enable_event(event, self.current_zen)
 
@@ -620,9 +620,12 @@ class Events(QtCore.QThread):
                 last_pos[0] / 1000, last_pos[1] / 1000, frame_size[0] * pxsize / 1e6, frame_size[1] * pxsize / 1e6
             )
             self.app.map.draw()
-        elif args[1] in ("DataColorPalette", "FramesPerStack", "DataAcquire", "TrackAcquire"):
+        elif (
+            args[1] in ("DataColorPalette", "FramesPerStack", "DataAcquire", "TrackAcquire")
+            and self.zen.is_experiment_running
+        ):
             self.app.change_color()
-        elif args[1] == "OBJREV":
+        elif args[1] == "OBJREV" and self.zen.is_experiment_running:
             self.app.change_wavelengths()
         elif args[1] == "HR_MainShutter1":
             if self.title != self.zen.title:  # current document changed

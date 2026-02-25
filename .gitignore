@@ -13,6 +13,7 @@ TransformParameters.0.txt
 *.so
 # ask Zeiss for a license for Zen Blue
 zen_blue.py
+zen_api.py
 ._*
 *.log
 *.nii
