@@ -49,7 +49,7 @@ dev = ["pytest", "pytest-order"]
 #pyside2 = ["pyside2"]
 #pyside6 = ["pyside6"]
 zen_black = ["pywin32"]
-zen_blue = ["pywin32", "grpclib"]
+zen_blue = ["pywin32", "grpclib", "python-dateutil", "lxml"]
 
 [project.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"

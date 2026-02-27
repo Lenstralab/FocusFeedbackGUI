@@ -21,15 +21,17 @@ from focusfeedbackgui.microscopes import MicroscopeClass
 from focusfeedbackgui.pid import Pid
 from focusfeedbackgui.utilities import QThread, warp, yaml_load
 
+debug = False
+
 try:
-    from PySide6 import QtCore
-    from PySide6.QtGui import QAction, QGuiApplication
-    from PySide6.QtWidgets import *
+    from PySide6 import QtCore  # noqa
+    from PySide6.QtGui import QAction, QGuiApplication  # noqa
+    from PySide6.QtWidgets import *  # noqa
 
     pyside = 6
 except ImportError:
-    from PySide2 import QtCore
-    from PySide2.QtWidgets import *
+    from PySide2 import QtCore  # noqa
+    from PySide2.QtWidgets import *  # noqa
 
     pyside = 2
 
@@ -52,6 +54,8 @@ def feedbackloop(queue, ns, microscope):
             frame_size = microscope.frame_size
             time_n_prev = 0
             time_s_prev = time()
+            time_n = 0
+            time_n_now = 0
             piezo_time = 0.5  # time piezo needs to settle in s
             detected = deque((True,) * 5, 5)
             zmem = {}
@@ -67,9 +71,12 @@ def feedbackloop(queue, ns, microscope):
 
                 for channel in ns.channels:
                     time_s_now = time()
-                    frame, time_n_now = microscope.get_frame(
+                    frame = microscope.get_frame(
                         channel, *functions.clip_rectangle(frame_size, *ns.roi_pos, ns.roi_size, ns.roi_size)
                     )
+                    if frame is None:
+                        continue
+                    frame, time_n_now = frame
                     a = np.hstack(
                         functions.fitgauss(frame, ns.theta[get_cm_str(channel)], ns.sigma[channel], ns.fast_mode)
                     )
@@ -91,10 +98,17 @@ def feedbackloop(queue, ns, microscope):
                     else:
                         fitted = False
                         detected.append(False)
-                    queue.put((channel, time_n, fitted, a[:8], piezo_pos, focus_pos, time_s_now))
+                    if debug:
+                        queue.put((channel, time_n, fitted, a[:8], piezo_pos, focus_pos, time_s_now, frame))
+                    else:
+                        queue.put((channel, time_n, fitted, a[:8], piezo_pos, focus_pos, time_s_now))
 
                 time_s_now = time()
                 piezo_factor = np.clip((time_s_now - time_s_prev) / piezo_time, 0.2, 1)
+
+                if not ellipticity:
+                    sleep(min(1, time_interval) / 4)
+                    continue
 
                 # Update the piezo position:
                 if ns.feedback_mode == "pid":
@@ -164,7 +178,7 @@ class UiMainWindow(QMainWindow):
         if pyside == 6:
             screen_size = QGuiApplication.primaryScreen().size()
         else:
-            screen_size = QDesktopWidget().screenGeometry()
+            screen_size = QDesktopWidget().screenGeometry()  # noqa
         self.title = "Cylinder lens feedback GUI"
         self.width = 640
         self.height = 800
@@ -388,6 +402,20 @@ class UiMainWindow(QMainWindow):
         self.map_tab.layout.addWidget(self.reset_map_btn)
 
         self.layout.addWidget(self.tabs)
+
+        #tab 4
+        if debug:
+            self.debug_tab = QWidget()
+            self.tabs.addTab(self.debug_tab, "Debug")
+            self.debug_imshow = QGui.SubImPlot(QGui.PlotCanvas(), 111)
+            self.debug_imshow.ax.invert_xaxis()
+            self.debug_imshow.ax.invert_yaxis()
+            self.debug_imshow.ax.set_xlabel("x")
+            self.debug_imshow.ax.set_ylabel("y")
+            self.debug_imshow.ax.set_aspect("equal", adjustable="datalim")
+
+            self.debug_tab.layout = QVBoxLayout(self.debug_tab)
+            self.debug_tab.layout.addWidget(self.debug_imshow.canvas)
 
         # menus
         main_menu = self.menuBar()
@@ -1010,10 +1038,17 @@ class App(UiMainWindow):
                                 else:
                                     break
 
-                            for c, t, g, a, p, f, s in Q:
-                                file.write("- [{},{},{},{},".format(c, t, p, f))
-                                file.write("{},{},{},{},{},{},".format(*a))
-                                file.write("{}]\n".format(s))
+                            if debug:
+                                for c, t, g, a, p, f, s, frame in Q:
+                                    file.write("- [{},{},{},{},".format(c, t, p, f))
+                                    file.write("{},{},{},{},{},{},".format(*a))
+                                    file.write("{}]\n".format(s))
+                                    self.debug_imshow.update(frame)
+                            else:
+                                for c, t, g, a, p, f, s in Q:
+                                    file.write("- [{},{},{},{},".format(c, t, p, f))
+                                    file.write("{},{},{},{},{},{},".format(*a))
+                                    file.write("{}]\n".format(s))
 
                             channels = [q[0] for q in Q]
                             for channel in set(channels):
