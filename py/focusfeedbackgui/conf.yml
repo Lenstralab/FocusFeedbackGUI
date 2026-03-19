@@ -1,4 +1,4 @@
-microscope: zen_blue
+microscope: zen_black
 microscope_config: {host: 127.0.0.1, port: 5002, cert_file: 'C:\ProgramData\Carl Zeiss\ZenApiGateway\Certificates\ZenApiPersonalSigningRootCA.pem',
   control_token: paste_zen_api_token_here}
 maxStep: 0.1

@@ -186,7 +186,7 @@ class UiMainWindow(QMainWindow):
             screen_size = QGuiApplication.primaryScreen().size()
         else:
             screen_size = QDesktopWidget().screenGeometry()  # noqa
-        self.title = "Cylinder lens feedback GUI"
+        self.title = "Focus feedback GUI"
         self.width = 640
         self.height = 800
         self.right = screen_size.width() - self.width
@@ -566,7 +566,9 @@ class App(UiMainWindow):
         self.warp_action.triggered.connect(self.warp)
         self.warp_with_action.triggered.connect(self.warp_using_file)
 
-        self.fblprocess = Process(target=feedbackloop, args=(self.queue, self.NS, self.microscope_class))
+        self.fblprocess = Process(
+            target=feedbackloop, args=(self.queue, self.NS, self.microscope_class)
+        )
         self.fblprocess.start()
         self.guithread = None
 
