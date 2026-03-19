@@ -1,4 +1,4 @@
-import os
+import colorsys
 import re
 import sys
 import threading
@@ -8,6 +8,7 @@ from collections import deque
 from datetime import datetime
 from functools import partial
 from multiprocessing import Manager, Process, Queue
+from pathlib import Path
 from shutil import copyfile
 from time import sleep, time
 
@@ -45,7 +46,13 @@ def feedbackloop(queue, ns, microscope):
     _ = microscope.piezo_pos
 
     def get_cm_str(channel):
-        return ns.cyllens[microscope.get_camera(microscope.channel_names[channel])] + microscope.magnification_str
+        channel_names = microscope.channel_names
+        if channel >= len(channel_names):
+            camera = microscope.get_camera(channel_names[-1])
+        else:
+            camera = microscope.get_camera(channel_names[channel])
+        cyllens = ns.cyllens[camera] if ns.cyllens[camera] != "None" else ns.cyllens[(camera + 1) % 2]
+        return cyllens + microscope.magnification_str
 
     while not ns.quit:
         if ns.run:
@@ -185,8 +192,11 @@ class UiMainWindow(QMainWindow):
         self.right = screen_size.width() - self.width
         self.top = 32
 
-        with open(os.path.join(os.path.dirname(__file__), "stylesheet.qss")) as style_sheet:
-            self.setStyleSheet(style_sheet.read())
+        with open(Path(__file__).parent / "stylesheet.qss") as style_sheet:
+            qss = style_sheet.read()
+        self.setStyle(QStyleFactory.create("Fusion"))
+        self.setStyleSheet(qss)
+        QGui.set_plot_style(qss)
 
         self.setWindowTitle(self.title)
         self.setMinimumSize(self.width // 2, self.height // 2)
@@ -223,8 +233,8 @@ class UiMainWindow(QMainWindow):
         self.plots = QGui.PlotCanvas()
         self.eplot = QGui.SubPlot(self.plots, 611)
         self.eplot.append_plot("middle", ":", "gray")
-        self.eplot.append_plot("top", ":k")
-        self.eplot.append_plot("bottom", ":k")
+        self.eplot.append_plot("top", ":", color="gray")
+        self.eplot.append_plot("bottom", ":", color="gray")
         self.eplot.ax.set_ylabel("Ellipticity")
         self.eplot.ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=False)
 
@@ -238,11 +248,11 @@ class UiMainWindow(QMainWindow):
 
         self.rplot = QGui.SubPlot(self.plots, 614)
         self.rplot.ax.set_ylabel("R squared")
-        self.rplot.append_plot("bottom", ":k")
+        self.rplot.append_plot("bottom", ":", color="gray")
         self.rplot.ax.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=False)
 
         self.pplot = QGui.SubPlot(self.plots, 615)
-        self.pplot.append_plot("fb", "-k")
+        self.pplot.append_plot("fb", "-", color="gray")
         self.pplot.ax.set_xlabel("Time (frames)")
         self.pplot.ax.set_ylabel("Piezo pos (µm)")
 
@@ -343,7 +353,7 @@ class UiMainWindow(QMainWindow):
 
         r += 1
         conf_grid.addWidget(QLabel("XY feedback:"), r, 0)
-        # self.xyrdb = QGui.RadioButtons(('None', 'Move ROI', 'Move stage'))  # Stage not accurate enough
+        # self.xy_feedback_mode_rdb = QGui.RadioButtons(("None", "Move ROI", "Move stage"))  # Stage not accurate enough
         self.xy_feedback_mode_rdb = QGui.RadioButtons(("None", "Move ROI"))
         conf_grid.addWidget(self.xy_feedback_mode_rdb, r, 1)
 
@@ -403,7 +413,7 @@ class UiMainWindow(QMainWindow):
 
         self.layout.addWidget(self.tabs)
 
-        #tab 4
+        # tab 4
         if debug:
             self.debug_tab = QWidget()
             self.tabs.addTab(self.debug_tab, "Debug")
@@ -487,7 +497,7 @@ class App(UiMainWindow):
         self.stop = False  # Stop (waiting for) experiment
         self.quit = False  # Quit program
 
-        self.conf_filename = os.path.join(os.path.dirname(__file__), "conf.yml")
+        self.conf_filename = Path(__file__).parent / "conf.yml"
         self.conf_open(self.conf_filename)
         self.microscope_class = self.conf.get("microscope", "demo")
         self.NS.microscope_config = self.conf.get("microscope_config")
@@ -511,14 +521,15 @@ class App(UiMainWindow):
                 )
                 while not self.stop and not self.quit:
                     sleep(2.5)
-                    new_settings = (
-                        self.microscope.channel_colors_int,
-                        self.microscope.channel_names,
-                        self.microscope.duolink_filter,
-                    )
-                    if new_settings != settings:
-                        self.refresh()
-                        settings = new_settings
+                    if self.microscope.is_experiment_running:
+                        new_settings = (
+                            self.microscope.channel_colors_int,
+                            self.microscope.channel_names,
+                            self.microscope.duolink_filter,
+                        )
+                        if new_settings != settings:
+                            self.refresh()
+                            settings = new_settings
 
             self.refresh_thread = QThread(fun)
 
@@ -569,23 +580,29 @@ class App(UiMainWindow):
         self.duolink_filter_rdb.changeState(self.microscope.duolink_filter)
 
     def excepthook(self, *args, **kwargs):
-        try:
+        if threading.current_thread() is threading.main_thread():
+            try:
+                traceback.print_exception(*args, **kwargs)
+                QMessageBox.critical(self, "Error", "".join(traceback.format_exception(*args, **kwargs)))
+            except Exception:
+                traceback.print_exception(*args, **kwargs)
+                print("During handling of the above exception, another exception occurred:")
+                traceback.print_exc()
+        else:
             traceback.print_exception(*args, **kwargs)
-            QMessageBox.critical(self, "Error", "".join(traceback.format_exception(*args, **kwargs)))
-        except Exception:
-            traceback.print_exception(*args, **kwargs)
-            print("During handling of the above exception, another exception occurred:")
-            traceback.print_exc()
 
-    def warnhook(self, message, category, filename, lineno, file=None, line=None):
-        try:
-            warning = warnings.formatwarning(message, category, filename, lineno, line)
+    def warnhook(self, message, category, filename, lineno, _file=None, line=None):
+        warning = warnings.formatwarning(message, category, filename, lineno, line)
+        if threading.current_thread() is threading.main_thread():
+            try:
+                print(warning)
+                QMessageBox.warning(self, "Warning", warning)
+            except Exception:
+                print(warning)
+                print("During handling of the above warning, an exception occurred:")
+                traceback.print_exc()
+        else:
             print(warning)
-            QMessageBox.warning(self, "Warning", warning)
-        except Exception:
-            print(warnings.formatwarning(message, category, filename, lineno, line))
-            print("During handling of the above warning, an exception occurred:")
-            traceback.print_exc()
 
     def closeEvent(self, *args, **kwargs):
         self.set_quit()
@@ -627,12 +644,8 @@ class App(UiMainWindow):
     def change_color(self):
         if self.microscope.ready:
             for channel, color in enumerate(self.microscope.channel_colors_rgb):
-                color = np.asarray(color, float)
-                if np.all(color == 1):
-                    plot_color = np.zeros(3, float)
-                else:
-                    h = matplotlib.colors.rgb_to_hsv(color)
-                    plot_color = matplotlib.colors.hsv_to_rgb((h[0], 1.0, h[2]))
+                h, _, s = colorsys.rgb_to_hls(*color)
+                plot_color = colorsys.hls_to_rgb(h, 0.5, s)
 
                 if channel in self.NS.channels:
                     for plot in (
@@ -663,11 +676,8 @@ class App(UiMainWindow):
         ]
         for channel, color in zip(channels, channel_colors_rgb):
             color = np.asarray(color, float)
-            if np.all(color == 1):
-                plot_color = np.zeros(3, float)
-            else:
-                h = matplotlib.colors.rgb_to_hsv(color)
-                plot_color = matplotlib.colors.hsv_to_rgb((h[0], 1.0, h[2]))
+            h, _, s = colorsys.rgb_to_hls(*color)
+            plot_color = colorsys.hls_to_rgb(h, 0.5, s)
             for tb in ("top", "bottom"):
                 cn = "{}{}".format(tb, channel)
                 if cn not in self.splot:
@@ -775,7 +785,7 @@ class App(UiMainWindow):
 
         def warp_files(files):
             for file in files:
-                if os.path.isfile(file):
+                if Path(file).is_file():
                     warp(file, transform_files=transform_files, transforms=transforms, cyllenses=cyllenses)
 
         self.warp_thread = QThread(warp_files, self.warp_done, files)
@@ -792,8 +802,8 @@ class App(UiMainWindow):
     def reset_map(self):
         self.map.remove_data()
 
-    def conf_save(self, f):
-        if not os.path.isfile(f):
+    def conf_save(self, f=None):
+        if not isinstance(f, (str, Path)) or not Path(f).is_file():
             options = QFileDialog.Options() | QFileDialog.DontUseNativeDialog
             f, _ = QFileDialog.getSaveFileName(
                 self, "Save config file", "", "Yaml files (*.yml);;All files (*)", options=options
@@ -807,8 +817,8 @@ class App(UiMainWindow):
             with open(f, "w") as h:
                 yaml.dump(self.conf, h, default_flow_style=None, sort_keys=False)
 
-    def conf_open(self, f):
-        if not os.path.isfile(f):
+    def conf_open(self, f=None):
+        if not isinstance(f, (str, Path)) or not Path(f).is_file():
             options = QFileDialog.Options() | QFileDialog.DontUseNativeDialog
             f, _ = QFileDialog.getOpenFileName(
                 self, "Open config file", "", "Yaml files (*.yml);;All files (*)", options=options
@@ -972,17 +982,16 @@ class App(UiMainWindow):
                 index=self.rectangle,
             )
 
-            cfilename = self.microscope.filename
-            cfexists = os.path.isfile(cfilename)  # whether ZEN already made the czi file (streaming)
+            cfilename = Path(self.microscope.filename)
+            cfexists = cfilename.is_file()  # whether ZEN already made the czi file (streaming)
             if cfexists:
-                pfilename = os.path.splitext(cfilename)[0] + ".pzl"
+                pfilename = cfilename.with_suffix(".pzl")
             else:
-                pfilename = os.path.splitext(self.conf.get("tmpPzlFile", "d:\tmp\tmp.pzl"))[
-                    0
-                ] + datetime.now().strftime("_%Y%m%d-%H%M%S.pzl")
-                if os.path.isfile(pfilename):
-                    os.remove(pfilename)
-            if not cfexists or (cfexists and not os.path.isfile(pfilename)):
+                pfilename = Path(self.conf.get("tmpPzlFile", r"d:\tmp\tmp.pzl"))
+                pfilename = pfilename.parent / datetime.now().strftime(f"{pfilename.stem}_%Y%m%d-%H%M%S.pzl")
+                if pfilename.is_file():
+                    pfilename.unlink()
+            if not cfexists or (cfexists and not pfilename.is_file()):
                 conf = {
                     "version": 3,
                     "feedback_mode": self.NS.feedback_mode,
@@ -1145,10 +1154,12 @@ class App(UiMainWindow):
                 if not cfexists:
                     for _ in range(5):
                         cfilename = functions.last_czi_file(self.conf.get("dataDir", r"d:\data"))
-                        npfilename = os.path.splitext(cfilename)[0] + ".pzl"
-                        if cfilename and not os.path.isfile(npfilename):
-                            copyfile(pfilename, npfilename)
-                            break
+                        if cfilename is not None:
+                            cfilename = Path(cfilename)
+                            npfilename = cfilename.with_suffix(".pzl")
+                            if npfilename.is_file():
+                                copyfile(pfilename, npfilename)
+                                break
                         sleep(0.25)
                 self.NS.roi_pos = roi_pos
             else:

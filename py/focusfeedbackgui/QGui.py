@@ -4,6 +4,7 @@ from traceback import format_exc
 import numpy as np
 from matplotlib import patches, pyplot, rcParams
 from matplotlib.figure import Figure
+from qss_parser import QSSParser
 
 try:
     from PySide6.QtWidgets import *  # isort: skip
@@ -16,6 +17,15 @@ from focusfeedbackgui.utilities import error_wrap
 
 rcParams.update({"figure.autolayout": True})
 np.seterr(all="ignore")
+
+
+def set_plot_style(qss):
+    parser = QSSParser()
+    parser.parse(qss)
+    style = {i.class_name: i for i in parser._state.rules}  # noqa
+    if "Plot" in style:
+        plot = {j.name.replace("-", "."): j.value for j in style["Plot"].properties}
+        rcParams.update(plot)
 
 
 class RadioButtons(QWidget):

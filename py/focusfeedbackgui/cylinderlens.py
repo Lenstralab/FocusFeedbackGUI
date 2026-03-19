@@ -132,6 +132,8 @@ def fit_zhuang_int(z, s):
 
 def fit_zhuang(z, s, ds, rec=True):
     z, s, ds = utilities.rm_nan(z, s, ds)
+    if np.std(ds) < 1e-8:
+        ds = 1
     if z.size == 0:
         return np.full(5, np.nan), np.full(5, np.nan), (np.nan, np.nan)
     p = fit_zhuang_int(z, s)
@@ -232,7 +234,7 @@ def detect_points(im, sigma, mask=None, footprint=15, filter=True):
 def localize(f, im, theta=None, fast_mode=False, progress=True):
     sigma = [im.sigma[i] for i in range(int(f["C"].max()) + 1)]
 
-    @parfor(f.iterrows(), desc="Fitting localisations", length=len(f), bar=progress)
+    @parfor(f.iterrows(), desc="Fitting localisations", total=len(f), bar=progress)
     def fun(row):
         h = row[1]
         q, dq, r_squared = fn.fitgauss(
@@ -461,7 +463,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         f["dc"] = px[:, 3] - py[:, 3]
         f["ddc"] = np.sqrt(dpx[:, 3] ** 2 + dpy[:, 3] ** 2)
 
-        f = f.query(
+        g = f.query(
             "0.1<sigmax<0.5 & 0.1<sigmay<0.5 & abs(Ax)<10 & abs(Bx)<10 & abs(Ay)<10 & abs(By)<10 & X2x<20"
             f" & X2y<20 & cx<10 & cy<10"
         ).dropna()
@@ -477,12 +479,12 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         gs = GridSpec(4, 1)
 
         fig.add_subplot(gs[0, 0])
-        for i in range(f.shape[0]):
-            idx = f.index[i]
-            Zx = np.append(Zx, z[idx] - f["cx"][idx])
+        for i in range(g.shape[0]):
+            idx = g.index[i]
+            Zx = np.append(Zx, z[idx] - g["cx"][idx])
             Sx = np.append(Sx, sx[idx])
             dSx = np.append(dSx, dsx[idx])
-            plt.plot(z[idx] - f["cx"][idx], sx[idx], ".")
+            plt.plot(z[idx] - g["cx"][idx], sx[idx], ".")
 
         qx, dqx, X2x = fit_zhuang(Zx, Sx, dSx)
         if not np.isnan(qx).all():
@@ -493,12 +495,12 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         plt.ylim(0, 0.5)
 
         fig.add_subplot(gs[1, 0])
-        for i in range(f.shape[0]):
-            idx = f.index[i]
-            Zy = np.append(Zy, z[idx] - f["cy"][idx])
+        for i in range(g.shape[0]):
+            idx = g.index[i]
+            Zy = np.append(Zy, z[idx] - g["cy"][idx])
             Sy = np.append(Sy, sy[idx])
             dSy = np.append(dSy, dsy[idx])
-            plt.plot(z[idx] - f["cy"][idx], sy[idx], ".")
+            plt.plot(z[idx] - g["cy"][idx], sy[idx], ".")
 
         qy, dqy, X2y = fit_zhuang(Zy, Sy, dSy)
         if not np.isnan(qy).all():
@@ -509,7 +511,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         plt.ylim(0, 0.5)
 
-        dc, ddc = utilities.weighted_mean(f["dc"], f["ddc"])
+        dc, ddc = utilities.weighted_mean(g["dc"], g["ddc"])
 
         dc += qx[3] - qy[3]
         ddc = np.sqrt(ddc**2 + dqx[3] ** 2 + dqy[3] ** 2)
@@ -525,11 +527,11 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         fig.add_subplot(gs[2, 0])
 
-        for i in range(f.shape[0]):
-            idx = f.index[i]
-            plt.plot(z[idx] - (f["cx"][idx] + f["cy"][idx]) / 2, sx[idx] / sy[idx], ".")
+        for i in range(g.shape[0]):
+            idx = g.index[i]
+            plt.plot(z[idx] - (g["cx"][idx] + g["cy"][idx]) / 2, sx[idx] / sy[idx], ".")
             E = np.append(E, sx[idx] / sy[idx])
-            Ze = np.append(Ze, z[idx] - (f["cx"][idx] + f["cy"][idx]) / 2)
+            Ze = np.append(Ze, z[idx] - (g["cx"][idx] + g["cy"][idx]) / 2)
         q = np.hstack(
             (
                 np.sqrt(qx[0] / qy[0]),
@@ -553,7 +555,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
         (gl,) = plt.plot(Z, zhuang_ell(Z, q), "g-")
         plt.xlabel("z (um)")
         plt.ylabel("ellipticity (um)")
-        plt.legend((rl, gl), ("sx/sy", "fit"))
+        plt.legend((rl, gl), ("sx/sy", "fit"), frameon=False)
         # plt.xlim(-1,1)
         plt.ylim(elim[0] / 1.1, elim[1] * 1.1)
 

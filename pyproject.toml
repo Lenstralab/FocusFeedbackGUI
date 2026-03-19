@@ -29,16 +29,17 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "matplotlib",
-    "ndbioimage>=2026.1.2",
-    "numpy<2.0.0",
-    "pandas>=2.0.0",
+    "matplotlib>=3.0.0,<4.0.0",
+    "ndbioimage>=2026.3.2",
+    "numpy",
+    "pandas>=2.0.0,<3.0.0",
     "parfor>=2025.1.0",
     "pyside2; python_version<'3.9'",
     "pyside6; python_version>'3.10'",
     "pyyaml",
+    "qss_parser==0.2.1",
     "scikit-image>=0.18.0",
-    "scipy>=1.15.0",
+    "scipy>=1.15.0,<2.0.0",
 ]
 
 [project.urls]

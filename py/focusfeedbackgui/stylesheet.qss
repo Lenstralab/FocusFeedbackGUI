@@ -1,19 +1,22 @@
-QMainWindow { background-color: #454D62 }
-QWidget { background-color: #454D62 }
-QCheckBox { color: #FFFFFF }
-QCheckBox:disabled { color: #262E3E }
-QCheckBox::indicator:disabled { background-color: #262E3E }
-QRadioButton { color: #FFFFFF }
-QPushButton { color: #FFFFFF }
-QPushButton:disabled { color: #262E3E }
-QLineEdit { color: #FFFFFF }
-QLabel { color: #FFFFFF }
-QComboBox { color: #FFFFFF }
-QAbstractItemView { color: #FFFFFF }
-QMenu { color: #FFFFFF }
-QMenu:disabled { color: #262E3E }
-QMenuBar { color: #FFFFFF }
-QTabWidget { border-color: #454D62 }
-QTabBar::tab { background-color: #262E3E; color: #FFFFFF }
-QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF }
-QHeaderView::section { background-color: #454D62; color: #FFFFFF }
+QMainWindow { background-color: #454D62; }
+QWidget { background-color: #454D62; }
+QCheckBox { color: #FFFFFF; }
+QCheckBox:disabled { color: #262E3E; }
+QCheckBox::indicator:disabled { background-color: #262E3E; }
+QRadioButton { color: #FFFFFF; border-radius: 25; selection-color: #0000FF; }
+#QRadioButton::indicator:unchecked { background-color: #FF0000; outline-color: #FFF000; border-color: #FFF000; }
+#QRadioButton::indicator:checked { background-color: #00FF00; }
+QPushButton { color: #FFFFFF; }
+QPushButton:disabled { color: #262E3E; }
+QLineEdit { color: #FFFFFF; }
+QLabel { color: #FFFFFF; }
+QComboBox { color: #FFFFFF; }
+QAbstractItemView { color: #FFFFFF; }
+QMenu { color: #FFFFFF; }
+QMenu:disabled { color: #262E3E; }
+QMenuBar { color: #FFFFFF; }
+QTabWidget { border-color: #454D62; }
+QTabBar::tab { background-color: #262E3E; color: #FFFFFF; }
+QTabBar::tab:selected { background-color: #454D62; color: #FFFFFF; }
+QHeaderView::section { background-color: #454D62; color: #FFFFFF; }
+Plot { figure-facecolor: #454D62; axes-facecolor: #262E3E; axes-edgecolor: #FFFFFF; axes-labelcolor: #FFFFFF; xtick-color: #FFFFFF; ytick-color: #FFFFFF; legend-labelcolor: #FFFFFF; text-color: #FFFFFF; }

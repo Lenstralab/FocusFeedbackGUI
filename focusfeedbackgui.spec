@@ -3,20 +3,23 @@
 from PyInstaller.utils.hooks import collect_submodules
 from pathlib import Path
 import focusfeedbackgui
+import ndbioimage
 
 
 block_cipher = None
 path = Path(focusfeedbackgui.__file__).parent
+ndbi_path = Path(ndbioimage.__file__).parent
 
 
 a = Analysis(
     [path / '__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[(path / 'stylesheet.qss', 'focusfeedbackgui'), (path / 'conf.yml', 'focusfeedbackgui')],
+    datas=[(path / 'stylesheet.qss', 'focusfeedbackgui'), (path / 'conf.yml', 'focusfeedbackgui'), (ndbi_path / 'transform.txt', 'ndbioimage')],
     hiddenimports=(collect_submodules('focusfeedbackgui') +
                    collect_submodules('xsdata_pydantic_basemodel.hooks') +
-                   collect_submodules('ndbioimage.readers')),
+                   collect_submodules('ndbioimage.readers') +
+                   collect_submodules('imagecodecs')),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

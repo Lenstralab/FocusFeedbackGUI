@@ -172,7 +172,7 @@ def warp(
 
     if os.path.exists(file):
         with Imread(file) as im:
-            default_transform = None
+            default_transform = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
             main_channel = 0
             if cyllenses is not None:
                 channels_wo_cl = set(range(im.shape["c"])) - set(cyllenses)

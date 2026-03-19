@@ -84,10 +84,12 @@ def fitgauss(im, theta=0, sigma=None, fastmode=False, err=False, xy=None):
     q[2] = np.abs(q[2])
     q[5] = np.abs(q[5])
     r2 = 1 - np.nansum((jm - gaussian7grid(q, xv, yv)) ** 2) / np.nansum((jm - np.nanmean(jm)) ** 2)
-    q[0:2] += cs[:, 0]
     if err:
-        return q, fminerr(lambda p0: gaussian7grid(p0, xv, yv), q, jm)[1], r2
+        dq = fminerr(lambda p0: gaussian7grid(p0, xv, yv), q, jm)[1]
+        q[0:2] += cs[:, 0]
+        return q, dq, r2
     else:
+        q[0:2] += cs[:, 0]
         return q, r2
 
 
@@ -244,10 +246,10 @@ def last_czi_file(folder=r"d:\data", t=np.inf):
     files = glob(os.path.join(folder, "**", "*.czi"), recursive=True)
     tm = [os.path.getctime(file) for file in files]
     if not tm:
-        return ""
+        return None
     else:
         t_newest = np.max(tm)
         if time() - t_newest > t:
-            return ""
+            return None
         else:
             return files[np.argmax(tm)]
