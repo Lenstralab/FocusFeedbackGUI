@@ -9,7 +9,7 @@ dataDir: d:\data
 tmpPzlFile: d:\temp\tmp.pzl
 fastMode: false
 gain: 0.005
-cyllenses: 1000mm, 500mm
+cyllenses: 1000mm, 500mm, 300mm
 cyllensLabels: [Cylindrical lens I, Cylindrical lens II]
 300mm100x10:
   q: [1.11350728, -0.11643823, 0.15658226, 1.26478436, 0.48382135, 0.41210216, 3.73683468,

@@ -1,14 +1,13 @@
 import sys
 import threading
-from multiprocessing import Process, Manager
+from multiprocessing import Manager, Process
 from time import sleep
 
 import numpy as np
-from ndbioimage import Imread
-
 from focusfeedbackgui import QGui
 from focusfeedbackgui.microscopes import MicroscopeClass
 from focusfeedbackgui.utilities import QThread
+from ndbioimage import Imread
 
 try:
     from PySide6 import QtCore
@@ -110,7 +109,15 @@ class Microscope(MicroscopeClass):
                 if index not in self.namespace.patches:
                     break
                 index += 1
-        self.namespace.patches[index] = x, y, radius / np.sqrt(ellipticity), radius * np.sqrt(ellipticity), theta, color, LineWidth
+        self.namespace.patches[index] = (
+            x,
+            y,
+            radius / np.sqrt(ellipticity),
+            radius * np.sqrt(ellipticity),
+            theta,
+            color,
+            LineWidth,
+        )
         return index
 
     def remove_drawing(self, index):
@@ -193,8 +200,7 @@ class App(UiMainWindow):
         return idx
 
     def rgbshow(self, t):
-        """display an rgb image using 1, 2 or 3 nxm arrays as input
-        """
+        """display an rgb image using 1, 2 or 3 nxm arrays as input"""
         im = self.image[t].max("z")
         self.namespace.frame = t, im
         jm = []

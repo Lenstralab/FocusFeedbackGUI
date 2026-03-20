@@ -88,19 +88,19 @@ class Microscope(MicroscopeClass):
             pythoncom.CoInitialize()
             for zen_id, vbz_id in self._id.values():  # First try co-marshalling
                 try:
-                    zen = win32com.client.Dispatch(
+                    zen = win32com.client.GetActiveObject(
                         pythoncom.CoGetInterfaceAndReleaseStream(zen_id, pythoncom.IID_IDispatch)
                     )
-                    vba = win32com.client.Dispatch(
+                    vba = win32com.client.GetActiveObject(
                         pythoncom.CoGetInterfaceAndReleaseStream(vbz_id, pythoncom.IID_IDispatch)
                     )
                     break
                 except Exception:
                     continue
             else:
-                zen = win32com.client.Dispatch("Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface")
+                zen = win32com.client.GetActiveObject("Zeiss.Micro.AIM.ApplicationInterface.ApplicationInterface")
                 if self.event_handler is None:
-                    vba = win32com.client.Dispatch("Lsm5Vba.Application")
+                    vba = win32com.client.GetActiveObject("Lsm5Vba.Application")
                 else:
                     vba = win32com.client.DispatchWithEvents("Lsm5Vba.Application", self.event_handler)
                 self._id[thread_id] = (

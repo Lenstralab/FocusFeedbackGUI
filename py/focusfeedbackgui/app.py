@@ -1,3 +1,14 @@
+import tqdm
+import tqdm.auto
+
+
+def nop_tqdm(it, *_args, **_kwargs):
+    return it
+
+
+tqdm.tqdm = nop_tqdm
+tqdm.auto.tqdm = nop_tqdm
+
 import colorsys
 import re
 import sys
@@ -12,7 +23,6 @@ from pathlib import Path
 from shutil import copyfile
 from time import sleep, time
 
-import matplotlib
 import numpy as np
 import yaml
 from focusfeedbackgui import QGui
@@ -566,9 +576,7 @@ class App(UiMainWindow):
         self.warp_action.triggered.connect(self.warp)
         self.warp_with_action.triggered.connect(self.warp_using_file)
 
-        self.fblprocess = Process(
-            target=feedbackloop, args=(self.queue, self.NS, self.microscope_class)
-        )
+        self.fblprocess = Process(target=feedbackloop, args=(self.queue, self.NS, self.microscope_class))
         self.fblprocess.start()
         self.guithread = None
 

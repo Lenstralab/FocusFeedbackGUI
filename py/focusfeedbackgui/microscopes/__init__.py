@@ -34,7 +34,10 @@ class MicroscopeClass(metaclass=ABCMeta):
             microscope_subclass = microscope
         else:
             try:
-                microscope_subclass = import_module(f"focusfeedbackgui.microscopes.{microscope.lower()}").Microscope
+                try:
+                    microscope_subclass = import_module(f"focusfeedbackgui.microscopes.{microscope.lower()}").Microscope
+                except ImportError:
+                    microscope_subclass = import_module(microscope.lower()).Microscope
             except ImportError:
                 warn(f"Importing {microscope} failed, using demo instead.\n\n{format_exc()}")
                 microscope_subclass = Demo

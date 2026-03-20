@@ -341,6 +341,7 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
             fig.add_subplot(gs[2, 1:4])
             plt.hist((b["theta"] + np.pi / 4) % (np.pi / 2) - np.pi / 4, 100)
             plt.xlabel("theta")
+            plt.title(f"total = {len(b)}")
 
             theta, dtheta = utilities.circ_weighted_mean(b["theta"], b["dtheta"], np.pi / 2)
             print("θ = {} ± {}".format(theta, dtheta))
@@ -527,11 +528,14 @@ def calibrate_z(file, em_lambdas, channels, cyllens=None, progress=None, elim=No
 
         fig.add_subplot(gs[2, 0])
 
+        total = 0
         for i in range(g.shape[0]):
             idx = g.index[i]
+            total += len(z[idx])
             plt.plot(z[idx] - (g["cx"][idx] + g["cy"][idx]) / 2, sx[idx] / sy[idx], ".")
             E = np.append(E, sx[idx] / sy[idx])
             Ze = np.append(Ze, z[idx] - (g["cx"][idx] + g["cy"][idx]) / 2)
+        plt.title(f"#beads = {g.shape[0]}, #fits = {total}")
         q = np.hstack(
             (
                 np.sqrt(qx[0] / qy[0]),

@@ -31,12 +31,13 @@ classifiers = [
 dependencies = [
     "matplotlib>=3.0.0,<4.0.0",
     "ndbioimage>=2026.3.2",
-    "numpy",
+    "numpy<2.0.0",
     "pandas>=2.0.0,<3.0.0",
-    "parfor>=2025.1.0",
+    "parfor==2025.1.0",
     "pyside2; python_version<'3.9'",
     "pyside6; python_version>'3.10'",
     "pyyaml",
+    "pywin32; sys_platform=='win32'",
     "qss_parser==0.2.1",
     "scikit-image>=0.18.0",
     "scipy>=1.15.0,<2.0.0",
@@ -47,10 +48,6 @@ repository = "https://github.com/Lenstralab/FocusFeedbackGUI"
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-order"]
-#pyside2 = ["pyside2"]
-#pyside6 = ["pyside6"]
-zen_black = ["pywin32"]
-zen_blue = ["pywin32", "grpclib", "python-dateutil", "lxml"]
 
 [project.scripts]
 focusfeedbackgui = "focusfeedbackgui.__main__:main"
