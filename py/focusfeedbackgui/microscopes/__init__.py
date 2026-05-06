@@ -35,7 +35,9 @@ class MicroscopeClass(metaclass=ABCMeta):
         else:
             try:
                 try:
-                    microscope_subclass = import_module(f"focusfeedbackgui.microscopes.{microscope.lower()}").Microscope
+                    microscope_subclass = import_module(
+                        f"focusfeedbackgui.microscopes.{microscope.lower()}"
+                    ).Microscope
                 except ImportError:
                     microscope_subclass = import_module(microscope.lower()).Microscope
             except ImportError:
