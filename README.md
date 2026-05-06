@@ -152,7 +152,7 @@ https://surfdrive.surf.nl/files/index.php/s/BSsuGbRJ4EaQzgL.
     venv\Scripts\activate
     pip install pyinstaller
     # do not use pip install -e . as it will compile the Rust code in slow debug mode
-    pip install .
+    pip install .[pyinstaller]
     pyinstaller focusfeedbackgui.spec --clean --noconfirm
 
 - Open NSIS and click "Compile NSI scripts", then open focusfeedbackgui.nsi with it.
