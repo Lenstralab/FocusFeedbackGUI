@@ -2,24 +2,32 @@
 
 # Focus Feedback GUI
 Gui to live track single particles. Written for Zeiss' Zen Black software. A version working with Zeiss' Zen Blue will
-be available from Zeiss soon.
+be available from Zeiss soon. A microscope with cylindrical lens as described in
+[https://doi.org/10.1016/j.molcel.2024.01.020](https://doi.org/10.1016/j.molcel.2024.01.020) is required. Tested on
+Windows 10 Enterprise 2015 LTSB with Zen Black 2.3 SP1 FP3 (Black) version 14.0.30.201 with option 'Macro' installed and
+Python 3.10. The GUI can run in demo mode, and for offline calibration on any recent PC (tested on macOS 26 and Fedora
+Linux 43 with Python 3.12).
 
 # Installation
 ## With installer
+- Requirements: x86_64 pc with Windows 10 or newer.
+- Installation time: ~5 minutes, configuration time: up to an hour.
 - Run FocusFeedbackGUI_setup.exe
 - Configure:
 Start Menu > FocusFeedbackGUI/configuration and edit the file
 
 ## From source
+- Requirements: when used with Zen Black: x86_64 pc with Windows 10, otherwise: whatever is recommended for the microscope to be used.
+- Installation time: ~15 minutes, configuration time: up to an hour.
 - Install Python 3.8 or later: https://www.python.org/
-- Install Rust: https://rustup.rs/
-- Install using pip:
+- Install Rust: 1.89.0 or later: https://rustup.rs/
+- Install the latest version using pip:
 
 
     pip install git+https://github.com/Lenstralab/FocusFeedbackGUI.git
 
 Note: For Python 3.11 and up PySide6 will be used and for Python3.8 PySide2 will be used. If you're using Python 3.9 or
-3.10, you need to choose for PySide2 or PySide6 and install it yourself. Some older versions of Windows are not
+3.10, you need to choose PySide2 or PySide6 and install it yourself. Some older versions of Windows are not
 supported by PySide6, limiting the Python version you can use to Python 3.10 or earlier.
   
     pip install PySide6
@@ -138,13 +146,23 @@ Some values can be changed by the gui and then saved by using the File>Save (As)
 
 ## Example files
 A bead file and a tracking example file can be downloaded from here:
-https://surfdrive.surf.nl/files/index.php/s/BSsuGbRJ4EaQzgL.
+https://surfdrive.surf.nl/files/index.php/s/BSsuGbRJ4EaQzgL.  
+The bead files can be used to test the calibration process.
+To do this, open the GUI, switch to the tab 'Configuration', set Cylindrical lens II to 300mm, enable feedback channel
+'TV2' and make sure that the wavelength set for TV1 is 664, and 510 for TV2. Then click 'Calibrate with beads' and open
+one of the bead files. After calibration is done, a pdf is generated with the results in the same folder. The
+calibration can be saved by choosing File > Save or File > Save As.
+The other image can be used to test the correction for the warp introduced by the cylindrical lens. Open the GUI, switch
+to the tab 'Configuration', set Cylindrical lens II to 300mm. Then click 'Warp image file', first select one or more
+bead files to used as calibration, or a transform.yml file generated in a previous run. Then select the image file. The
+corrected file will be saved as a tiff file in the same folder.
+
 
 # Development
 ## Requirements
-- Python 3.8 or higher: https://www.python.org/
-- Rust: https://rustup.rs/
-- PyCharm: https://www.jetbrains.com/pycharm/
+- Python 3.8 or later: https://www.python.org/
+- Rust 1.89.0 or later: https://rustup.rs/
+- PyCharm: https://www.jetbrains.com/pycharm/ or similar Python IDE
 - NSIS: https://nsis.sourceforge.io/Download/
 
 ## Creating an installer

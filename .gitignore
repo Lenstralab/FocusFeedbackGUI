@@ -19,3 +19,4 @@ zen_api.py
 *.nii
 *sync-conflict*
 *.pzl
+.agentbridge

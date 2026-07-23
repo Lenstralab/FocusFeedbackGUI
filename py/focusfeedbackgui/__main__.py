@@ -7,9 +7,12 @@ from focusfeedbackgui import app
 from focusfeedbackgui.cylinderlens import calibrate_z
 from focusfeedbackgui.utilities import info, warp
 
+from . import __version__
+
 
 def main():
     parser = ArgumentParser(description="Tracking using a cylindrical lens.")
+    parser.add_argument("-v", "--version", action="version", version=__version__)
     parser.add_argument("mode", help="track|calibrate|transform|info", type=str, default="track", nargs="?")
     parser.add_argument("file", help="image_file", type=str, default=None, nargs="?")
     parser.add_argument("out", help="path to tif out", type=str, default=None, nargs="?")
